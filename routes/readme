@@ -1,0 +1,66 @@
+     const userDetails=await model.UserDetails.find()
+
+
+         model.UserDetails.create(
+       {user_id:10,
+       name:"this is vinay kumar",
+       gender:'male',
+       mail_id:"khfkhsdkh",
+       phone_no:4563214568,
+       p_pic_path:'ertyuio'
+     })
+
+      res.send(status, body): Use res.status(status).send(body)
+      const body = {
+        user_id: 90,
+        name: "jeff",
+        gender: "male",
+        mail_id: "amazon@gmail.com",
+        phone_no: 9638527412,
+        p_pic_path: 'kehfks/ksdhfkhsf/jeffpic'
+      };
+
+
+
+      const express = require('express');
+const ytdl = require('ytdl-core');
+const fs = require('fs');
+const path = require('path');
+
+const app = express();
+const port = 3000;
+const savePath = path.join(__dirname, 'musicfiles', 'sweety.mp3');
+
+app.get('/extract-low-quality-audio', async (req, res) => {
+  const youtubeUrl = 'https://www.youtube.com/watch?v=JGwWNGJdvx8';
+  // Validate YouTube URL
+  if (!ytdl.validateURL(youtubeUrl)) {
+    return res.status(400).send('Invalid YouTube URL');
+  }
+
+  try {
+    const info = await ytdl.getInfo(youtubeUrl);
+    // console.log(info,'this is the info of the video')
+    const metaData = {
+      videoId: info.videoDetails.videoId,
+      title: info.videoDetails.title,
+      length: info.videoDetails.lengthSeconds,
+      iframeUrl: `https://www.youtube.com/embed/${info.videoDetails.videoId}`,
+      thumbnail: info.videoDetails.thumbnails[0].url,
+    };
+    const thumbnailUrl = info.videoDetails.thumbnail.thumbnails[0].url;//save this thumbnail in the server file 
+    // res.send(`<img src="${thumbnailUrl}" alt="Video Thumbnail">`);
+    const audioFormat = ytdl.chooseFormat(info.formats, { quality: 'lowestaudio' });
+    const fileStream = fs.createWriteStream(savePath);
+    ytdl(youtubeUrl, { format: audioFormat }).pipe(fileStream);
+    fileStream.on('finish', () => {
+      console.log('Audio saved successfully');
+      // res.send('Audio saved successfully');
+    });
+  } catch (error) {
+    console.error('Error:', error);
+    res.status(500).send('Internal Server Error');
+  }
+});
+
+      
