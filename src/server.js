@@ -14,7 +14,7 @@ const server = http.createServer(express);
 
 express.use(bodyParser.json());
 express.use(index);
-express.use(cors());
+// express.use(cors());
 db()
 server.listen(PORT, (req, res) => {
     console.log("server started");

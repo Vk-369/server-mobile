@@ -1,7 +1,7 @@
 const UserRoutes = require('./routes/users')
-const Demo = require('./routes/demo')
+const SignupRoutes = require('./routes/Authentication/signup')
+const LoginRoutes = require('./routes/Authentication/login')
 
-const routes = [UserRoutes, Demo]
-console.log(Demo)
+const routes = [UserRoutes, SignupRoutes, LoginRoutes]
 
 module.exports = routes
