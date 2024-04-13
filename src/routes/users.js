@@ -1,7 +1,8 @@
 var express = require("express");
 var app = express.Router();
 const cors = require("cors");
-var model = require("../services/model");
+const UserDetails = require('../models/userDetails')
+const songsDetails = require('../models/songs')
 const Joi = require("joi");
 app.use(cors());
 const ytdl = require('ytdl-core');
@@ -29,7 +30,7 @@ app.post("/addOrUpdate/user/details", async function (req, res, next) {
       return res.status(400).json({ error: error.details[0].message });
     }
 
-    const insertedUser = await model.UserDetails.create(body);
+    const insertedUser = await UserDetails.create(body);
     if (!insertedUser) {
       // Handle database insertion failure
       return res
@@ -73,7 +74,7 @@ app.post('/insert/newSong/byUrl', async (req, res) => {
       thumbnail: info.videoDetails.thumbnails[0].url,
     };
     const name=metaData.title.split('|')[0]
-    const savePath = path.join(__dirname, 'musicfiles',`${name}.mp3`);
+    const savePath = path.join(__dirname, '../musicfiles',`${name}.mp3`);
     console.log(savePath,'this is the save path')
     const audioFormat = ytdl.chooseFormat(info.formats, { quality: 'lowestaudio' });
     const fileStream = fs.createWriteStream(savePath);
@@ -93,7 +94,7 @@ app.post('/insert/newSong/byUrl', async (req, res) => {
 async function storeDataInDb(metaData,savePath)
 {
   console.log("this is to store the data in the data base")
-  const insertedSongData = await model.songsDetails.create(
+  const insertedSongData = await songsDetails.create(
   {
     s_path:savePath,
     s_dis_name:metaData.title,
@@ -132,7 +133,7 @@ app.post("/get/music/file", async function (req, res, next) {
 });
 
 
-
+module.exports = app
 
 
 
