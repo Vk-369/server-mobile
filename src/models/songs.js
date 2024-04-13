@@ -1,6 +1,7 @@
 const mongoose = require("mongoose");
 
-const songsSchema = mongoose.Schema({
+const Schema = mongoose.Schema;
+const songsSchema = new Schema({
     s_path: { require: true, type: String },
     s_pic_path: { require: true, type: String },
     i_tag: { require: true, type: String },
