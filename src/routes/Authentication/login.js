@@ -31,7 +31,7 @@ LoginRoutes.post("/login/user", async (req, res) => {
       res.status(500).json({ response: "Invalid Password" });
       return res.end();
     }
-    const token = jwt.sign({ mail_id: user.mail_id }, process.env.JWT_KEY, {
+    const token = jwt.sign({ mail_id: user.mail_id, user_id: user.user_id }, process.env.JWT_KEY, {
       expiresIn: "1h",
     });
     res.status(200).json({ response: token });
