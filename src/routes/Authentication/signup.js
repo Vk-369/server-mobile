@@ -25,6 +25,8 @@ SignupRoutes.post("/signup/user", async (req, res) => {
     const { error, value: body } = Schema.validate(req.body);
     if (error) {
       console.log(error);
+      const response = error.details[0];
+      return res.json(encrypt(response));
     }
 
     console.log(body);
@@ -107,19 +109,19 @@ SignupRoutes.post("/signup/verify/otp", async (req, res) => {
     if (error) {
       console.log(error);
     }
-    const user = await UserDetails.findOne({
-      mail_id: body.mail_id,
-      status: 1,
-    });
-    if (user) {
-      const response = {
-        success: true,
-        error: false,
-        message: "User already exists.",
-        status: 2,
-      };
-      return res.json(encrypt(response));
-    }
+    // const user = await UserDetails.findOne({
+    //   mail_id: body.mail_id,
+    //   status: 1,
+    // });
+    // if (user) {
+    //   const response = {
+    //     success: true,
+    //     error: false,
+    //     message: "User already exists.",
+    //     status: 2,
+    //   };
+    //   return res.json(encrypt(response));
+    // }
     const userOtp = await Otp.findOne({ mail_id: body.mail_id, status: 1 });
     if (!(userOtp && userOtp.mail_id && userOtp.otp)) {
       const response = {
@@ -135,7 +137,7 @@ SignupRoutes.post("/signup/verify/otp", async (req, res) => {
         success: true,
         error: false,
         message: "Wrong Otp.",
-        status: 0,
+        status: 1,
       };
       return res.json(encrypt(response));
     } else if (
@@ -267,6 +269,20 @@ SignupRoutes.post("/resend/otp", async (req, res) => {
       return res.json(encrypt(response));
     }
 
+    const user = await UserDetails.findOne({
+      mail_id: body.mail_id,
+      status: 1,
+    });
+    if (!user) {
+      const response = {
+        success: true,
+        error: false,
+        message: "User doesn't exists.",
+        otp: false,
+      };
+      return res.json(encrypt(response));
+    }
+
     const otp = generateOtp();
     const newOtp = new Otp({
       mail_id: body.mail_id,
@@ -288,6 +304,35 @@ SignupRoutes.post("/resend/otp", async (req, res) => {
       success: true,
       error: false,
       message: "new OTP sent.",
+      otp: true,
+    };
+    return res.json(encrypt(response));
+  } catch (error) {
+    console.log(error);
+  }
+});
+
+SignupRoutes.post("/change/password", async (req, res) => {
+  req.body = decrypt(req);
+  const Schema = Joi.object({
+    mail_id: Joi.string().required(),
+    password: Joi.string().required(),
+  });
+  try {
+    const { error, value: body } = Schema.validate(req.body);
+    if (error) {
+      console.log(error);
+      const response = error.details[0];
+      return res.json(encrypt(response));
+    }
+    await UserDetails.updateOne(
+      { mail_id: body.mail_id },
+      { $set: { password: body.password } }
+    );
+    const response = {
+      success: true,
+      error: false,
+      message: "Password reset successful.",
     };
     return res.json(encrypt(response));
   } catch (error) {
