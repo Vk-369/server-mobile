@@ -120,7 +120,7 @@ SignupRoutes.post("/signup/verify/otp", async (req, res) => {
         success: true,
         error: false,
         message: "No user exists!",
-        status: 0,
+        operation: "SignUp",
       };
       return res.json(encrypt(response));
     }
@@ -133,7 +133,7 @@ SignupRoutes.post("/signup/verify/otp", async (req, res) => {
         success: true,
         error: false,
         message: "Otp expired.",
-        status: 1,
+        operation: "Retry",
       };
       return res.json(encrypt(response));
     } else if (userOtp.otp != body.otp && userOtp.status === 1) {
@@ -141,7 +141,7 @@ SignupRoutes.post("/signup/verify/otp", async (req, res) => {
         success: true,
         error: false,
         message: "Wrong Otp.",
-        status: 1,
+        operation: "Retry",
       };
       return res.json(encrypt(response));
     } else if (
@@ -154,7 +154,7 @@ SignupRoutes.post("/signup/verify/otp", async (req, res) => {
         success: true,
         error: false,
         message: "User already verified.",
-        status: 2,
+        operation: "Login",
       };
       return res.json(encrypt(response));
     }
@@ -198,7 +198,7 @@ SignupRoutes.post("/signup/verify/otp", async (req, res) => {
         success: true,
         error: false,
         message: "Account Verified.",
-        status: 2,
+        operation: "Login",
       };
       return res.json(encrypt(response));
     }
