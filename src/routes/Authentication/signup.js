@@ -109,21 +109,13 @@ SignupRoutes.post("/signup/verify/otp", async (req, res) => {
     if (error) {
       console.log(error);
     }
-    // const user = await UserDetails.findOne({
-    //   mail_id: body.mail_id,
-    //   status: 1,
-    // });
-    // if (user) {
-    //   const response = {
-    //     success: true,
-    //     error: false,
-    //     message: "User already exists.",
-    //     status: 2,
-    //   };
-    //   return res.json(encrypt(response));
-    // }
+    const user = await UserDetails.findOne({
+      mail_id: body.mail_id,
+      status: 1,
+    });
+
     const userOtp = await Otp.findOne({ mail_id: body.mail_id, status: 1 });
-    if (!(userOtp && userOtp.mail_id && userOtp.otp)) {
+    if (!userOtp && !user) {
       const response = {
         success: true,
         error: false,
@@ -132,7 +124,19 @@ SignupRoutes.post("/signup/verify/otp", async (req, res) => {
       };
       return res.json(encrypt(response));
     }
-    if (userOtp.otp != body.otp) {
+    if (
+      !userOtp ||
+      (userOtp.otp === body.otp &&
+        userOtp.expiry < moment().format("YYYY-MM-DD HH:mm:ss"))
+    ) {
+      const response = {
+        success: true,
+        error: false,
+        message: "Otp expired.",
+        status: 1,
+      };
+      return res.json(encrypt(response));
+    } else if (userOtp.otp != body.otp && userOtp.status === 1) {
       const response = {
         success: true,
         error: false,
@@ -143,7 +147,8 @@ SignupRoutes.post("/signup/verify/otp", async (req, res) => {
     } else if (
       userOtp.otp === body.otp &&
       userOtp.status === 2 &&
-      userOtp.expiry < moment().format("YYYY-MM-DD HH:mm:ss")
+      userOtp.expiry > moment().format("YYYY-MM-DD HH:mm:ss") &&
+      user
     ) {
       const response = {
         success: true,
@@ -152,18 +157,21 @@ SignupRoutes.post("/signup/verify/otp", async (req, res) => {
         status: 2,
       };
       return res.json(encrypt(response));
-    } else if (
-      userOtp.otp === body.otp &&
-      userOtp.expiry < moment().format("YYYY-MM-DD HH:mm:ss")
-    ) {
-      const response = {
-        success: true,
-        error: false,
-        message: "Otp expired.",
-        status: 1,
-      };
-      return res.json(encrypt(response));
-    } else {
+    }
+    // else if (
+    //   !userOtp ||
+    //   (userOtp.otp === body.otp &&
+    //     userOtp.expiry < moment().format("YYYY-MM-DD HH:mm:ss"))
+    // ) {
+    //   const response = {
+    //     success: true,
+    //     error: false,
+    //     message: "Otp expired.",
+    //     status: 1,
+    //   };
+    //   return res.json(encrypt(response));
+    // }
+    else {
       await UserDetails.updateOne(
         { mail_id: body.mail_id },
         { $set: { status: 1 } }
@@ -172,9 +180,13 @@ SignupRoutes.post("/signup/verify/otp", async (req, res) => {
         {
           mail_id: body.mail_id,
           status: 1,
-          updated_at: moment().format("YYYY-MM-DD HH:mm:ss"),
         },
-        { $set: { status: 2 } }
+        {
+          $set: {
+            updated_at: moment().format("YYYY-MM-DD HH:mm:ss"),
+            status: 2,
+          },
+        }
       );
       const mailData = {
         receiver: body.mail_id,
@@ -271,8 +283,8 @@ SignupRoutes.post("/resend/otp", async (req, res) => {
 
     const user = await UserDetails.findOne({
       mail_id: body.mail_id,
-      status: 1,
     });
+    console.log(user, body.mail_id);
     if (!user) {
       const response = {
         success: true,
@@ -334,6 +346,7 @@ SignupRoutes.post("/change/password", async (req, res) => {
       error: false,
       message: "Password reset successful.",
     };
+    console.log(response);
     return res.json(encrypt(response));
   } catch (error) {
     console.log(error);
