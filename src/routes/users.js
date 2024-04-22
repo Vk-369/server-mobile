@@ -1,52 +1,15 @@
 var express = require("express");
 var app = express.Router();
-const cors = require("cors");
 const UserDetails = require('../models/userDetails')
 const songsDetails = require('../models/songs')
 const Joi = require("joi");
-app.use(cors());
 const ytdl = require('ytdl-core');
 const fs = require('fs');
 const path = require('path');
-const bodyParser = require('body-parser');
-app.use(bodyParser.json());
-/* GET users listing. */
-//for User details adding or updating
+const cors = require("cors");
+app.use(cors());
+const currenDir=path.join(__dirname,'../musicFiles/')
 
-app.post("/addOrUpdate/user/details", async function (req, res, next) {
-  console.log("API is -/addOrUpdate/user/details", req.body);
-  try {
-    const userDetailsSchema = Joi.object({
-      user_id: Joi.number().required(),
-      name: Joi.string().required(),
-      gender: Joi.string().valid("male", "female").required(),
-      mail_id: Joi.string().required(),
-      phone_no: Joi.number().required(),
-      // p_pic_path: Joi.string().required(),
-    });
-
-    const { error } = userDetailsSchema.validate(req.body);
-    if (error) {
-      return res.status(400).json({ error: error.details[0].message });
-    }
-
-    const insertedUser = await UserDetails.create(body);
-    if (!insertedUser) {
-      // Handle database insertion failure
-      return res
-        .status(500)
-        .json({ error: "Failed to insert user details into the database" });
-    } else {
-      console.log("Data inserted successfully");
-      return res
-        .status(201)
-        .json({ message: "Successfully created a new user" });
-    }
-  } catch (error) {
-    console.error(error);
-    return res.status(500).json({ error: "Internal server error" });
-  }
-});
 
 //for uploading song
 //need to make joi validation for this api
@@ -54,6 +17,7 @@ app.post('/insert/newSong/byUrl', async (req, res) => {
   try {
     const uploadSchema = Joi.object({
       url: Joi.string().required(),
+      displayName:Joi.string().required()
     });
     const { error } = uploadSchema.validate(req.body);
     if (error) {
@@ -73,49 +37,55 @@ app.post('/insert/newSong/byUrl', async (req, res) => {
       iframeUrl: `https://www.youtube.com/embed/${info.videoDetails.videoId}`,
       thumbnail: info.videoDetails.thumbnails[0].url,
     };
-    const name=metaData.title.split('|')[0]
-    const savePath = path.join(__dirname, '../musicfiles',`${name}.mp3`);
-    console.log(savePath,'this is the save path')
+    const name=metaData.title.split('|')[0].trim()
+    const savePath = currenDir+`${name}.mp3`
+    console.log(savePath,'this is the path in which the file gonna store')
     const audioFormat = ytdl.chooseFormat(info.formats, { quality: 'lowestaudio' });
     const fileStream = fs.createWriteStream(savePath);
     ytdl(youtubeUrl, { format: audioFormat }).pipe(fileStream);
     fileStream.on('finish', () => {
       console.log('Audio saved successfully');
-      const store=storeDataInDb(metaData,savePath)
+      const store=storeDataInDb(metaData,`${name}`,req)
+      res.send({message:'audio file saved successfully',success:true})
     });
+
 
   } catch (error) {
     console.error('Error:', error);
-    res.status(500).send('Internal Server Error');
+    res.send(error)
   }
 });
 
 //this is the function to store the data in the db(music files and its metadata)
-async function storeDataInDb(metaData,savePath)
+async function storeDataInDb(metaData,filePath,req)
 {
   console.log("this is to store the data in the data base")
+try{
+
   const insertedSongData = await songsDetails.create(
   {
-    s_path:savePath,
+    s_path:filePath,//the file path would be the file name in the dat while retriving that we need to add current directory as prefix
     s_dis_name:metaData.title,
     i_tag:metaData.iframeUrl,
     s_pic_path:metaData.thumbnail,
     duration:metaData.length,
-    videoId:metaData.videoId
+    videoId:metaData.videoId,
+    s_displayName:req.body.displayName
   })
-  if (!insertedSongData) {
-    // Handle database insertion failure
-    console.log("error while inserting song data")
-    } else {
-    console.log("Data inserted successfully");
-  
-  }
+  console.log("data inserted successfully")
+}
+catch(err)
+{
+  console.log("failed to insert song data in to the db")
+  throw (err)
+}
 
 }
 
-//fetch the music file and send to the ui
-app.post("/get/music/file", async function (req, res, next) {
-  console.log("API is -/addOrUpdate/user/details", req.body);
+//selected music file should be sent to the front end
+app.post("/get/selected/music/file", async function (req, res, next) {
+  console.log("API is -/get/selected/music/file", req.body);
+  console.log(currenDir,'this is the currendirectory in the fetch particular song api')
   try {
     const fetchSongSchema = Joi.object({
       s_path: Joi.string().required(),//this would contains the song name so that we can find the path of the song
@@ -125,7 +95,21 @@ app.post("/get/music/file", async function (req, res, next) {
     if (error) {
       return res.status(400).json({ error: error.details[0].message });
     }
+    // const filePath = currenDir+`${name}.mp3`
 
+    //!make this dynammic
+    const filePath = currenDir+"Miami - Video Song.mp3"
+    await fs.readFile(filePath,(err,data)=>
+  {
+    if(err)
+    {
+      throw err
+    }
+    const base64Data=data.toString('base64')
+    res.send({song:base64Data,
+         success:true,
+          message:'sucessfully song fetched'})
+  })
   } catch (error) {
     console.error(error);
     return res.status(500).json({ error: "Internal server error" });
