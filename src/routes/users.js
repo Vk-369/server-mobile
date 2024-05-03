@@ -18,6 +18,8 @@ app.post("/insert/newSong/byUrl", async (req, res) => {
     const uploadSchema = Joi.object({
       url: Joi.string().required(),
       displayName: Joi.string().required(),
+      imageUrl:Joi.string().optional(),
+      artist:Joi.string().optional(),
     });
     const { error } = uploadSchema.validate(req.body);
     if (error) {
@@ -68,6 +70,8 @@ async function storeDataInDb(metaData, filePath, req) {
       duration: metaData.length,
       videoId: metaData.videoId,
       s_displayName: req.body.displayName,
+      image_url:req.body?.imageUrl,
+      artist:req.body?.artist
     });
     console.log("data inserted successfully");
   } catch (err) {
@@ -77,37 +81,56 @@ async function storeDataInDb(metaData, filePath, req) {
 }
 
 //selected music file should be sent to the front end
-app.post("/get/selected/music/file", async function (req, res, next) {
+app.get("/get/selected/music/file", async function (req, res, next) {
   // const body = decrypt(req.body);
-  req.body = decrypt(req);
+  // req.body = decrypt(req);
 
-  console.log("API is -/get/selected/music/file", req.body);
+  console.log("API is -/get/selected/music/file ");
   try {
-    const fetchSongSchema = Joi.object({
-      s_id: Joi.string().required(), //this would contains the song name so that we can find the path of the song
-    });
+    // const fetchSongSchema = Joi.object({
+    //   s_id: Joi.string().required(), //this would contains the song name so that we can find the path of the song
+    // });
 
-    const { error } = fetchSongSchema.validate(req.body);
-    if (error) {
-      return res.status(400).json({ error: error.details[0].message });
-    }
-    const record = await songsDetails.findOne({ _id: req.body.s_id });
-
+    // const { error } = fetchSongSchema.validate(req.body);
+    // if (error) {
+    //   return res.status(400).json({ error: error.details[0].message });
+    // }
+    const record = await songsDetails.findOne({ _id: req.query.s_id });
+    // readStream=fs.createReadStream(currenDir + `${record.s_path}.mp3`)
     if (record) {
-      console.log(record.s_path, "this is the songPath");
-      const filePath = currenDir + `${record.s_path}.mp3`;
-      await fs.readFile(filePath, (err, data) => {
-        if (err) {
-          throw err;
-        }
-        const base64Data = data.toString("base64");
-        console.log("succesfully song fetched");
-        res.send(encrypt({
-          song: base64Data,
-          success: true,
-          message: "sucessfully song fetched",
-        }));
-      });
+      console.log('Streaming audio request received.');
+      const audioPath = currenDir + `${record.s_path}.mp3`; // Change the file name and path accordingly
+      const stat = fs.statSync(audioPath);
+      const fileSize = stat.size;
+      const range = req.headers.range;
+  
+      if (range) {
+          const parts = range.replace(/bytes=/, '').split('-');
+          const start = parseInt(parts[0], 10);
+          const end = parts[1] ? parseInt(parts[1], 10) : fileSize - 1;
+  
+          // const chunksize = (end - start) + 1;
+          const chunksize = 10**5;
+          const file = fs.createReadStream(audioPath, { start, end });
+          const head = {
+              'Content-Range': `bytes ${start}-${end}/${fileSize}`,
+              'Accept-Ranges': 'bytes',
+              'Content-Length': chunksize,
+              'Content-Type': 'audio/mpeg', // Change the content type according to your audio file format
+          };
+  
+          console.log(`Streaming audio chunk from byte ${start} to ${end}.`);
+          res.writeHead(206, head);
+          file.pipe(res);
+      } else {
+          const head = {
+              'Content-Length': fileSize,
+              'Content-Type': 'audio/mpeg', // Change the content type according to your audio file format
+          };
+          console.log('Streaming full audio.');
+          res.writeHead(200, head);
+          fs.createReadStream(audioPath).pipe(res);
+      }     
     } else {
       console.log("Error while fetching");
       throw new Error("error while fetching the song");

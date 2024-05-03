@@ -2,8 +2,8 @@ const express = require("express")();
 const bodyParser = require("body-parser");
 const http = require("http");
 const cors = require("cors");
-// const HOST = '192.168.1.14'
-const HOST = '0.0.0.0'
+const HOST = '192.168.1.59'
+// const HOST = '0.0.0.0'
 require("dotenv").config();
 
 const index = require("./index");
