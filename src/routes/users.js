@@ -12,6 +12,10 @@ app.use(cors());
 const currenDir = path.join(__dirname, "../musicFiles/");
 const { encrypt, decrypt } = require("../library/encryption");
 const multer = require("multer");
+
+
+
+
 //! for uploading song
 app.post("/insert/newSong/byUrl", async (req, res) => {
   try {
@@ -335,6 +339,7 @@ app.post("/fetch/playlist", async (req, res, next) => {
     console.log(finalPromiseResponse, "{{{{{{{{{}}}}}}}}}");
 
     userRecord.playlist.forEach((playlist,index) => {
+      if(finalPromiseResponse[index] && finalPromiseResponse[index].length)
       playlist['s_pic_path'] = finalPromiseResponse[index].s_pic_path; // Assuming initial value of 0 for number of songs
     });
     
