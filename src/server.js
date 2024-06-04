@@ -2,8 +2,6 @@ const express = require("express")();
 const bodyParser = require("body-parser");
 const http = require("http");
 //const cors = require("cors");
-// const HOST = "192.168.9.230";
-const HOST = '0.0.0.0'
 require("dotenv").config();
 const fs = require("fs");
 const path = require("path");
@@ -12,6 +10,7 @@ const db = require("./db");
 const socketEvents = require("./sockets.js");
 
 const PORT = process.env.SERVER_PORT;
+const HOST = process.env.SERVER_HOST
 
 const server = http.createServer(express);
 

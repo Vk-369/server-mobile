@@ -12,6 +12,7 @@ app.use(cors());
 const currenDir = path.join(__dirname, "../musicFiles/");
 const { encrypt, decrypt } = require("../library/encryption");
 const multer = require("multer");
+const { jwtAuth } =require("../library/Auth");
 
 
 
@@ -126,6 +127,7 @@ app.get("/get/selected/music/file", async function (req, res, next) {
 //! fetch previously played song/recommended songs
 app.post(
   "/get/recommendations/previouslyPlayed/song",
+  jwtAuth,
   async function (req, res, next) {
     req.body = decrypt(req);
     console.log("API is -/get/recommendations/previouslyPlayed/song", req.body);
@@ -166,9 +168,9 @@ app.post(
 );
 
 //!fetch user details for user profile view
-app.post("/get/user/profile/details", async function (req, res, next) {
+app.post("/get/user/profile/details", jwtAuth, async function (req, res, next) {
   req.body = decrypt(req);
-  console.log("API is -/get/recommendations/previouslyPlayed/song", req.body);
+  console.log("API is -/get/user/profile/details", req.body);
   const result = {};
   const userDetails = Joi.object({
     userID: Joi.string().required(),
@@ -203,7 +205,7 @@ app.post("/get/user/profile/details", async function (req, res, next) {
   }
 });
 //!update user profile
-app.post("/update/user/profile", async (req, res, next) => {
+app.post("/update/user/profile",jwtAuth, async (req, res, next) => {
   try {
     req.body = decrypt(req);
     console.log("API is -update/user/profile", req.body);
@@ -248,7 +250,7 @@ app.post("/update/user/profile", async (req, res, next) => {
 });
 
 //!create playlist
-app.post("/create/playlist", async (req, res, next) => {
+app.post("/create/playlist",jwtAuth, async (req, res, next) => {
   const result = {};
 
   try {
@@ -305,7 +307,7 @@ app.post("/create/playlist", async (req, res, next) => {
 });
 
 //! fetch playlists linked to an user
-app.post("/fetch/playlist", async (req, res, next) => {
+app.post("/fetch/playlist",jwtAuth, async (req, res, next) => {
   const result = {};
 
   try {
@@ -360,7 +362,7 @@ app.post("/fetch/playlist", async (req, res, next) => {
   }
 });
 //!fetch songs of a playlist
-app.post("/fetch/playlist/linked/songs", async (req, res, next) => {
+app.post("/fetch/playlist/linked/songs",jwtAuth, async (req, res, next) => {
   const result = {};
   try {
     req.body = decrypt(req);
@@ -420,7 +422,7 @@ app.post("/fetch/playlist/linked/songs", async (req, res, next) => {
   }
 });
 //! insert song into the playlist
-app.post("/insert/song/playlist", async (req, res, next) => {
+app.post("/insert/song/playlist",jwtAuth, async (req, res, next) => {
   const result = {};
   try {
     req.body = decrypt(req);

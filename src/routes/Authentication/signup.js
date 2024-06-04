@@ -65,6 +65,8 @@ SignupRoutes.post("/signup/user", async (req, res) => {
       gender: body.gender,
       phone_no: body.phone_no,
       status: 0,
+      created_at: moment().format('YYYY-MM-DD HH:mm:ss'),
+      updated_at: moment().format('YYYY-MM-DD HH:mm:ss')
     });
 
     const otp = generateOtp();
@@ -174,7 +176,7 @@ SignupRoutes.post("/signup/verify/otp", async (req, res) => {
     else {
       await UserDetails.updateOne(
         { mail_id: body.mail_id },
-        { $set: { status: 1 } }
+        { $set: { status: 1, updated_at: moment().format("YYYY-MM-DD HH:mm:ss") } }
       );
       await Otp.updateOne(
         {
@@ -339,7 +341,7 @@ SignupRoutes.post("/change/password", async (req, res) => {
     }
     await UserDetails.updateOne(
       { mail_id: body.mail_id },
-      { $set: { password: body.password } }
+      { $set: { password: body.password, updated_at: moment().format("YYYY-MM-DD HH:mm:ss")} }
     );
     const response = {
       success: true,
