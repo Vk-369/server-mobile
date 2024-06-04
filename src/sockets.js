@@ -1,10 +1,14 @@
 
 const fs = require("fs");
 const path = require("path");
+const songsDetails = require("./models/songs");
+
 console.log(__dirname,'this is the directory in the server js file')
 
-const currenDir = path.join(__dirname, "../src/musicFiles/Miami - Video Song.mp3");
-console.log(currenDir,'songs')
+// const currenDir = path.join(__dirname, "../src/musicFiles/Miami - Video Song.mp3");  
+// console.log(currenDir,'songs')
+const currenDir = path.join(__dirname, "../src/musicFiles/");
+
 
 module.exports = (server) => {
     const io=require('socket.io')(server,{
@@ -16,9 +20,9 @@ module.exports = (server) => {
   io.on('connection', (socket) => {
     console.log('A user connected');
   
-    socket.on('msg', (msg) => {
-      console.log("Received message:", msg);
-      io.to((msg.roomId).toString()).emit('message', msg);
+    socket.on('msg', (data) => {
+      console.log("Received message:", data,'lllllllllllll',data.roomId);
+      io.to((data.roomId).toString()).emit('message', data);
     });
   
     socket.on('create room', (roomId) => {
@@ -34,15 +38,25 @@ module.exports = (server) => {
       if (roomSockets) console.log(Array.from(roomSockets));
     });
   
-    socket.on('play', (event) => {
-      console.log('Play event received');
-      const readStream = fs.createReadStream(currenDir);
+
+    // {roomId:this.roomId,songId:songId}
+
+    socket.on('play', async (event) => {
+      console.log('Play event received',event);
+    const record = await songsDetails.findOne({ _id:event.songId});
+    console.log(record,'this is the record needed')
+    const audioPath = currenDir + `${record.s_path}.mp3`; // Change the file name and path accordingly
+    io.to(event.roomId.toString()).emit('metaData',record)
+      const readStream = fs.createReadStream(audioPath);
+      // const readStream = fs.createReadStream(currenDir);
       readStream.on('data', (chunks) => {
-        console.log(chunks)
+        console.log(chunks,"chunk **************",audioPath)
         io.to(event.roomId.toString()).emit('stream', chunks);
       });
   
+  
     });
+
 
     socket.on('resume play',(data)=>
     {
@@ -54,6 +68,24 @@ module.exports = (server) => {
     {
       console.log('this is into the pause play event ')
       io.to(data.roomId.toString()).emit('pause play');
+
+    })
+    socket.on('play next',(data)=>
+    {
+      console.log('this is into the pause play event ',data)
+      io.to(data.roomId.toString()).emit('next play this',data);
+
+    })
+    socket.on('play previous one',(data)=>
+    {
+      console.log('this is into the pause play event ',data)
+      io.to(data.roomId.toString()).emit('next play this',data);
+
+    })
+    socket.on('seek',(data)=>
+    {
+      console.log('this is into song seeking event ',data)
+      io.to(data.roomId.toString()).emit('song seeking',data);
 
     })
   
