@@ -59,12 +59,14 @@ LoginRoutes.post("/login/user", async (req, res) => {
         expiresIn: "1h",
       }
     );
+
     const response = {
       success: true,
       error: false,
       message: "Logged in successfully.",
       login: "success",
       token,
+      userID:user.user_id
     };
     return res.json(encrypt(response));
   } catch (error) {

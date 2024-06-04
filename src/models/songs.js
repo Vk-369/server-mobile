@@ -8,7 +8,9 @@ const songsSchema = new Schema({
     duration:{require:true,type:Number},
     videoId:{require:true,type:String},
     s_displayName:{require:true,type:String},
-    album: {require: true, type: String}
+    album: {require: true, type: String},
+    image_url:{require:true,type:String},
+    artist:{require:true,type:String},
   });
 
 const songsDetails = mongoose.model('song', songsSchema);
