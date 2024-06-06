@@ -1,5 +1,6 @@
 var express = require("express");
 var app = express.Router();
+const multer=require('multer')
 const UserDetails = require("../models/userDetails");
 const playList = require("../models/playList");
 const songsDetails = require("../models/songs");
@@ -9,11 +10,21 @@ const fs = require("fs");
 const path = require("path");
 const cors = require("cors");
 app.use(cors());
-const currenDir = path.join(__dirname, "../musicFiles/");
 const { encrypt, decrypt } = require("../library/encryption");
-const multer = require("multer");
+const currenDir = path.join(__dirname, "../musicFiles/");
+const reqDirForProfilePics = path.join(__dirname, "../profilePics/");
 
-
+const storage=multer.diskStorage({ 
+  destination:(req,file,cb)=>
+  {
+      cb(null,reqDirForProfilePics) //set the directory
+  },
+  filename:(req,file,cb)=>
+  {
+          cb(null,file.originalname)
+  }
+})
+const upload=multer({storage})
 
 
 //! for uploading song
@@ -180,11 +191,25 @@ app.post("/get/user/profile/details", async function (req, res, next) {
       error: "JOI validation error while fetching user profile details",
     });
   }
+  let blobData
+  let userData ={}
   try {
-    let userData = await UserDetails.find(
+    await UserDetails.find(
       { user_id: req.body.userID },
-      "username status p_pic_path phone_no mail_id gender"
-    );
+      "username status p_pic_path phone_no mail_id gender p_pic_path"
+    ).then((response)=>
+    {
+      console.log(response,'this is the user data')
+      const fileData=fs.readFileSync(response[0].p_pic_path)
+      
+          //  blobData=new Blob([data])
+           blobData = Buffer.from(fileData).toString('base64');
+       userData['data'] =response
+
+          userData['profilePic']=blobData
+
+    })
+
     console.log(userData, "this is the user data");
 
     result.success = true;
@@ -203,15 +228,13 @@ app.post("/get/user/profile/details", async function (req, res, next) {
   }
 });
 //!update user profile
-app.post("/update/user/profile", async (req, res, next) => {
+app.post("/update/user/profile",upload.single('file'),async (req, res, next) => {
   try {
-    req.body = decrypt(req);
-    console.log("API is -update/user/profile", req.body);
+    // req = decrypt(req.body);
+    // console.log(req,'this is the request after decrypting')
+    // console.log("API is -update/user/profile", req.body);
     const result = {};
-    const updateProfile = Joi.object({
-      userupdatedData: Joi.object().required(),
-      userID: Joi.string().required(),
-    });
+    const updateProfile = Joi.object().required();
     const { error } = updateProfile.validate(req.body);
     if (error) {
       console.log("joi validation", error);
@@ -221,17 +244,23 @@ app.post("/update/user/profile", async (req, res, next) => {
         })
       );
     }
-    await UserDetails.updateOne(
-      { user_id: req.body.userID }, // Filter
+    let savePath
+    if(req.file)
       {
-        $set: {
-          username: req.body.userupdatedData.username,
-          gender: req.body.userupdatedData.gender,
-          mail_id: req.body.userupdatedData.email,
-          phone_no: req.body.userupdatedData.contact,
-        },
-      } // Update data
-    );
+         savePath = reqDirForProfilePics + ((`${req.file.filename}`).trim());
+      }
+console.log(__dirname,'this is the current directory')
+    await UserDetails.updateOne(
+      { user_id: req.body.userID }, // Filter  
+       { $set: {
+          username: req.body?.username,
+          gender: req.body?.gender,
+          mail_id: req.body?.email,
+          phone_no: req.body?.contact,
+          p_pic_path:savePath
+        }}
+      )
+    
     result.success = true;
     result.error = false;
     result.message = "Successfully fetched";
@@ -246,6 +275,10 @@ app.post("/update/user/profile", async (req, res, next) => {
     return res.status(500).send(encrypt(result));
   }
 });
+
+
+
+
 
 //!create playlist
 app.post("/create/playlist", async (req, res, next) => {
@@ -336,13 +369,20 @@ app.post("/fetch/playlist", async (req, res, next) => {
       promiseTwo.push(songsDetails.findOne({ _id: item.songs[0] }));
     }
     const finalPromiseResponse = await Promise.all(promiseTwo);
-    console.log(finalPromiseResponse, "{{{{{{{{{}}}}}}}}}");
+    console.log(finalPromiseResponse,'this is the final promise response')
 
     userRecord.playlist.forEach((playlist,index) => {
-      if(finalPromiseResponse[index] && finalPromiseResponse[index].length)
-      playlist['s_pic_path'] = finalPromiseResponse[index].s_pic_path; // Assuming initial value of 0 for number of songs
+      console.log(playlist,index)
+      if(finalPromiseResponse[index])
+        {
+          console.log("into the if conditoin")
+
+          playlist['s_pic_path'] = finalPromiseResponse[index].s_pic_path; // Assuming initial value of 0 for number of songs
+        }
     });
+
     
+    console.log(userRecord.playlist,'this is the user record respective playlist')
     //map this playlist id to the respective user
     result.data = userRecord.playlist;
     result.success = true;
