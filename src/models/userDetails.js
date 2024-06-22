@@ -11,9 +11,9 @@ const userDetailsSchema = new Schema({
   p_pic_path: { require: false, type: String },
   password: { required: true, type: String },
   status: { required: true, type: Number },
-  playlist: { required: true, type: Object },
-  created_at: { required: true, type: Date },
-  updated_at: { required: true, type: Date },
+  playlist: { required: false, type: Object },
+  // created_at: { required: true, type: Date },
+  // updated_at: { required: true, type: Date },
 });
 
 userDetailsSchema.pre("save", async function (next) {

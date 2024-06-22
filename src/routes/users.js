@@ -142,22 +142,40 @@ app.post(
     console.log("API is -/get/recommendations/previouslyPlayed/song", req.body);
     const result = {};
     const uploadSchema = Joi.object({
-      shuffle: Joi.boolean().required(),
+      shuffle: Joi.boolean().allow(null),
+      searchKey:Joi.string().allow(null)
     });
+    console.log(req.body,'this is the body in the search')
     const { error } = uploadSchema.validate(req.body);
     if (error) {
       console.log("joi validation", error);
       return res.send({ error: "JOI validation error while uploading music" });
     }
+    let results
     try {
-      let songData = await songsDetails.find({});
+      let songData
+      if( !req.body.searchKey ||(req.body.searchKey && !req.body.searchKey.length) )
+        {
+
+          songData = await songsDetails.find({});
+        }
       // .limit(10);
+      if(req.body.searchKey && req.body.searchKey.length)
+        {
+          songData = await songsDetails.find({
+            $or: [
+              { s_displayName: { $regex: new RegExp(req.body.searchKey, 'i') } },
+              { artist: { $regex: new RegExp(req.body.searchKey, 'i') } }
+            ]
+          });
+console.log(results,'this is the result required')
+        }
       if (req.body.shuffle) {
         // Example usage:
         const array = songData;
         songData = shuffleArray(array);
       }
-      console.log(songData, "this is the song data for recommendations");
+      // console.log(songData, "this is the song data for recommendations");
       result.success = true;
       result.error = false;
       result.message = "Successfully fetched";
@@ -200,13 +218,16 @@ app.post("/get/user/profile/details", async function (req, res, next) {
     ).then((response)=>
     {
       console.log(response,'this is the user data')
-      const fileData=fs.readFileSync(response[0].p_pic_path)
-      
-          //  blobData=new Blob([data])
-           blobData = Buffer.from(fileData).toString('base64');
-       userData['data'] =response
-
-          userData['profilePic']=blobData
+      userData['data'] =response
+      if(response[0].p_pic_path)
+        {
+          const fileData=fs.readFileSync(response[0].p_pic_path)
+          
+              //  blobData=new Blob([data])
+               blobData = Buffer.from(fileData).toString('base64');
+    
+              userData['profilePic']=blobData
+        }
 
     })
 
@@ -360,26 +381,30 @@ app.post("/fetch/playlist", async (req, res, next) => {
     console.log(userRecord.playlist, "this is the user record");
     const promises = [];
     const promiseTwo = [];
-    for (let record of userRecord.playlist) {
-      promises.push(playList.findOne({ _id: record.p_id }));
-    }
-    const promiseResponse = await Promise.all(promises);
-    console.log(promiseResponse, "this is the first promise response");
-    for (let item of promiseResponse) {
-      promiseTwo.push(songsDetails.findOne({ _id: item.songs[0] }));
-    }
-    const finalPromiseResponse = await Promise.all(promiseTwo);
-    console.log(finalPromiseResponse,'this is the final promise response')
+    if(userRecord.playlist.length)
+      {
 
-    userRecord.playlist.forEach((playlist,index) => {
-      console.log(playlist,index)
-      if(finalPromiseResponse[index])
-        {
-          console.log("into the if conditoin")
-
-          playlist['s_pic_path'] = finalPromiseResponse[index].s_pic_path; // Assuming initial value of 0 for number of songs
+        for (let record of userRecord.playlist) {
+          promises.push(playList.findOne({ _id: record.p_id }));
         }
-    });
+        const promiseResponse = await Promise.all(promises);
+        console.log(promiseResponse, "this is the first promise response");
+        for (let item of promiseResponse) {
+          promiseTwo.push(songsDetails.findOne({ _id: item.songs[0] }));
+        }
+        const finalPromiseResponse = await Promise.all(promiseTwo);
+        console.log(finalPromiseResponse,'this is the final promise response')
+    
+        userRecord.playlist.forEach((playlist,index) => {
+          console.log(playlist,index)
+          if(finalPromiseResponse[index])
+            {
+              console.log("into the if conditoin")
+    
+              playlist['s_pic_path'] = finalPromiseResponse[index].s_pic_path; // Assuming initial value of 0 for number of songs
+            }
+        });
+      }
 
     
     console.log(userRecord.playlist,'this is the user record respective playlist')

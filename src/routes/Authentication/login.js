@@ -14,7 +14,9 @@ LoginRoutes.post("/login/user", async (req, res) => {
     mail_id: Joi.string().required(),
     password: Joi.string().required(),
   });
+
   try {
+    console.log(req.body)
     const { error, value: body } = Schema.validate(req.body);
     if (error) {
       console.log(error);
