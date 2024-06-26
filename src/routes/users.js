@@ -72,7 +72,10 @@ app.post("/insert/newSong/byUrl", async (req, res) => {
     res.send(error);
   }
 });
-
+app.get("/home",async function(req,res,next)
+{
+  res.send("hello baiebee")
+})
 //!selected music file should be sent to the front end
 app.get("/get/selected/music/file", async function (req, res, next) {
   // const body = decrypt(req.body);
