@@ -2,7 +2,7 @@
   "name": "server-mobile",
   "version": "0.0.0",
   "private": true,
-  "main": "src/server.js",
+  "main": "src/index.js",
   "engines": {
     "node":"16.x"
   },
