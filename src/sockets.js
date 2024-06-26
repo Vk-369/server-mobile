@@ -19,7 +19,7 @@ module.exports = (server) => {
 
   io.on('connection', (socket) => {
     console.log('A user connected');
-  
+    
     socket.on('msg', (data) => {
       console.log("Received message:", data,'lllllllllllll',data.roomId);
       io.to((data.roomId).toString()).emit('message', data);
