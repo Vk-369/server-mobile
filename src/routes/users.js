@@ -74,6 +74,7 @@ app.post("/insert/newSong/byUrl", async (req, res) => {
 });
 app.get("/home",async function(req,res,next)
 {
+  console.log("got ht")
   res.send("hello baiebee")
 })
 //!selected music file should be sent to the front end

@@ -2,12 +2,10 @@
   "name": "server-mobile",
   "version": "0.0.0",
   "private": true,
-  "main": "src/index.js",
-  "engines": {
-    "node":"16.x"
-  },
+  "main": "src/server.js",
+ 
   "scripts": {
-    "start": "node index.js"
+    "start": "node server.js"
   },
   "dependencies": {
     "bcrypt": "^5.1.1",
