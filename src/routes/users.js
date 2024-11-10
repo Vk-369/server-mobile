@@ -1,11 +1,12 @@
 var express = require("express");
 var app = express.Router();
-const multer=require('multer')
+const multer = require("multer");
 const UserDetails = require("../models/userDetails");
 const playList = require("../models/playList");
 const songsDetails = require("../models/songs");
 const Joi = require("joi");
-const ytdl = require("ytdl-core");
+// const ytdl = require("ytdl-core");
+const ytdl = require('@distube/ytdl-core');
 const fs = require("fs");
 const path = require("path");
 const cors = require("cors");
@@ -14,69 +15,176 @@ const { encrypt, decrypt } = require("../library/encryption");
 const currenDir = path.join(__dirname, "../musicFiles/");
 const reqDirForProfilePics = path.join(__dirname, "../profilePics/");
 
-const storage=multer.diskStorage({ 
-  destination:(req,file,cb)=>
-  {
-      cb(null,reqDirForProfilePics) //set the directory
+const storage = multer.diskStorage({
+  destination: (req, file, cb) => {
+    cb(null, reqDirForProfilePics); //set the directory
   },
-  filename:(req,file,cb)=>
-  {
-          cb(null,file.originalname)
-  }
-})
-const upload=multer({storage})
-
+  filename: (req, file, cb) => {
+    cb(null, file.originalname);
+  },
+});
+const upload = multer({ storage });
 
 //! for uploading song
-app.post("/insert/newSong/byUrl", async (req, res) => {
+
+app.post('/insert/newSong/byUrl', async (req, res) => {
   try {
-    const uploadSchema = Joi.object({
-      url: Joi.string().required(),
-      displayName: Joi.string().required(),
-      imageUrl: Joi.string().optional(),
-      artist: Joi.string().optional(),
-    });
-    const { error } = uploadSchema.validate(req.body);
-    if (error) {
-      console.log("joi validation", error);
-      return res.send({ error: "JOI validation error while uploading music" });
-    }
-    const youtubeUrl = req.body.url;
-    // Validate YouTube URL
-    if (!ytdl.validateURL(youtubeUrl)) {
-      return res.status(400).send("Invalid YouTube URL");
-    }
-    const info = await ytdl.getInfo(youtubeUrl);
-    const metaData = {
-      videoId: info.videoDetails.videoId,
-      title: info.videoDetails.title,
-      length: info.videoDetails.lengthSeconds,
-      iframeUrl: `https://www.youtube.com/embed/${info.videoDetails.videoId}`,
-      thumbnail: info.videoDetails.thumbnails[0].url,
-    };
-    const name = metaData.title.split("|")[0].trim();
-    const savePath = currenDir + `${name}.mp3`;
-    console.log(savePath, "this is the path in which the file gonna store");
-    const audioFormat = ytdl.chooseFormat(info.formats, {
-      quality: "lowestaudio",
-    });
-    const fileStream = fs.createWriteStream(savePath);
-    ytdl(youtubeUrl, { format: audioFormat }).pipe(fileStream);
-    fileStream.on("finish", () => {
-      console.log("Audio saved successfully");
-      const store = storeDataInDb(metaData, `${name}`, req);
-      res.send({ message: "audio file saved successfully", success: true });
-    });
+      console.log('Entered the upload API');
+
+      // Validate request body using Joi
+      const uploadSchema = Joi.object({
+          url: Joi.string().required(),
+          displayName: Joi.string().required(),
+          imageUrl: Joi.string().optional(),
+          artist: Joi.string().optional(),
+      });
+
+      const { error } = uploadSchema.validate(req.body);
+      if (error) {
+          console.log('Joi validation error:', error);
+          return res.status(400).send({ error: 'JOI validation error while uploading music' });
+      }
+
+      const youtubeUrl = req.body.url;
+
+      // Validate YouTube URL
+      if (!ytdl.validateURL(youtubeUrl)) {
+          return res.status(400).send('Invalid YouTube URL');
+      }
+
+      const info = await ytdl.getInfo(youtubeUrl);
+      const metaData = {
+          videoId: info.videoDetails.videoId,
+          title: info.videoDetails.title,
+          length: info.videoDetails.lengthSeconds,
+          iframeUrl: `https://www.youtube.com/embed/$$${info.videoDetails.videoId}`,
+          thumbnail: info.videoDetails.thumbnails[0].url,
+      };
+
+      const name = metaData.title.split('|')[0].trim();
+      const songName=`${name}.mp3`
+      console.log(songName,'this is the song name to be saved with')
+      // const savePath = path.join(currenDir, `${name.replace(/ /g, '_')}.mp3`);
+      const savePath = path.join(currenDir,songName);
+      console.log(savePath, 'This is the path where the file will be stored');
+
+      const audioFormat = ytdl.chooseFormat(info.formats, { filter: 'audioonly' }); // Choose audio-only format
+
+      
+      // Ensure the directory exists
+      fs.mkdirSync(currenDir, { recursive: true });
+
+      console.log('Stream creation started');
+
+      const fileStream = fs.createWriteStream(savePath);
+
+      ytdl(youtubeUrl, { format: audioFormat })
+          .on('error', (err) => {
+              console.error('Error during download:', err);
+              fileStream.destroy();
+              res.status(500).send({ error: 'Error during audio download' });
+          })
+          .on('progress', (chunkSize, downloadedSize, totalSize) => {
+              // console.log(`Downloaded ${downloadedSize / 1024 / 1024} MB of ${totalSize / 1024 / 1024} MB`);
+          })
+          .pipe(fileStream);
+
+      fileStream.on('finish', () => {
+          console.log('Audio saved successfully');
+
+          // Store metadata in database (Assuming `storeDataInDb` is implemented)
+          // storeDataInDb(metaData, name, req);
+          storeDataInDb(metaData, songName, req);
+
+          res.send({ message: 'Audio file saved successfully', success: true });
+      });
+
+      console.log('Stream creation done');
   } catch (error) {
-    console.error("Error:", error);
-    res.send(error);
+      console.error('Error:', error);
+      res.status(500).send({ error: 'An unexpected error occurred' });
   }
 });
-app.get("/home",async function(req,res,next)
-{
-  console.log("got ht")
-  res.send("hello baiebee")
-})
+// app.post("/insert/newSong/byUrl", async (req, res) => {
+//   try {
+//     console.log("Entered the upload API");
+
+//     // Validate request body using Joi
+//     const uploadSchema = Joi.object({
+//       url: Joi.string().required(),
+//       displayName: Joi.string().required(),
+//       imageUrl: Joi.string().optional(),
+//       artist: Joi.string().optional(),
+//     });
+
+//     const { error } = uploadSchema.validate(req.body);
+//     if (error) {
+//       console.log("Joi validation error:", error);
+//       return res.status(400).send({ error: "JOI validation error while uploading music" });
+//     }
+
+//     const youtubeUrl = req.body.url;
+
+//     // Validate YouTube URL
+//     if (!ytdl.validateURL(youtubeUrl)) {
+//       return res.status(400).send("Invalid YouTube URL");
+//     }
+
+//     const info = await ytdl.getInfo(youtubeUrl);
+//     const metaData = {
+//       videoId: info.videoDetails.videoId,
+//       title: info.videoDetails.title,
+//       length: info.videoDetails.lengthSeconds,
+//       iframeUrl: `https://www.youtube.com/embed/${info.videoDetails.videoId}`,
+//       thumbnail: info.videoDetails.thumbnails[0].url,
+//     };
+
+//     const name = metaData.title.split("|")[0].trim();
+//     const savePath = path.join(currenDir, `${name.replace(/ /g, '_')}.mp3`);
+//     console.log(savePath, "This is the path where the file will be stored");
+
+//     const audioFormat = ytdl.chooseFormat(info.formats, { quality: "lowestaudio" });
+
+//     // Ensure the directory exists
+//     fs.mkdirSync(currenDir, { recursive: true });
+
+//     console.log("Stream creation started");
+
+//     const fileStream = fs.createWriteStream(savePath);
+//     // console.log(fileStream,'this is the file stream created')
+
+//     fileStream.on("error", (err) => {
+//       console.log("Stream reading error:", err);
+//       res.status(500).send({ error: "Error saving the audio file" });
+//     });
+
+//     fileStream.on("finish", () => {
+//       console.log("Audio saved successfully");
+
+//       // Store metadata in database (Assuming `storeDataInDb` is implemented)
+//       storeDataInDb(metaData, name, req);
+
+//       res.send({ message: "Audio file saved successfully", success: true });
+//     });
+
+//     // Pipe the ytdl stream to the fileStream
+//     ytdl(youtubeUrl, { format: audioFormat })
+//       .pipe(fileStream)
+//       .on("error", (err) => {
+//         console.error("Error during streaming:", err);
+//         res.status(500).send({ error: "Error during audio streaming" });
+//       });
+
+//     console.log("Stream creation done");
+//   } catch (error) {
+//     console.error("Error:", error);
+//     res.status(500).send({ error: "An unexpected error occurred" });
+//   }
+// });
+app.get("/home", async function (req, res, next) {
+  console.log("got ht");
+  res.send("hello baiebee");
+});
 //!selected music file should be sent to the front end
 app.get("/get/selected/music/file", async function (req, res, next) {
   // const body = decrypt(req.body);
@@ -84,19 +192,12 @@ app.get("/get/selected/music/file", async function (req, res, next) {
 
   console.log("API is -/get/selected/music/file ");
   try {
-    // const fetchSongSchema = Joi.object({
-    //   s_id: Joi.string().required(), //this would contains the song name so that we can find the path of the song
-    // });
-
-    // const { error } = fetchSongSchema.validate(req.body);
-    // if (error) {
-    //   return res.status(400).json({ error: error.details[0].message });
-    // }
+    
     const record = await songsDetails.findOne({ _id: req.query.s_id });
     // readStream=fs.createReadStream(currenDir + `${record.s_path}.mp3`)
     if (record) {
       console.log("Streaming audio request received.");
-      const audioPath = currenDir + `${record.s_path}.mp3`; // Change the file name and path accordingly
+      const audioPath = currenDir + `${record.s_path}`; // Change the file name and path accordingly
       const stat = fs.statSync(audioPath);
       const fileSize = stat.size;
       const range = req.headers.range;
@@ -147,33 +248,33 @@ app.post(
     const result = {};
     const uploadSchema = Joi.object({
       shuffle: Joi.boolean().allow(null),
-      searchKey:Joi.string().allow(null)
+      searchKey: Joi.string().allow(null),
     });
-    console.log(req.body,'this is the body in the search')
+    console.log(req.body, "this is the body in the search");
     const { error } = uploadSchema.validate(req.body);
     if (error) {
       console.log("joi validation", error);
       return res.send({ error: "JOI validation error while uploading music" });
     }
-    let results
+    let results;
     try {
-      let songData
-      if( !req.body.searchKey ||(req.body.searchKey && !req.body.searchKey.length) )
-        {
-
-          songData = await songsDetails.find({});
-        }
+      let songData;
+      if (
+        !req.body.searchKey ||
+        (req.body.searchKey && !req.body.searchKey.length)
+      ) {
+        songData = await songsDetails.find({});
+      }
       // .limit(10);
-      if(req.body.searchKey && req.body.searchKey.length)
-        {
-          songData = await songsDetails.find({
-            $or: [
-              { s_displayName: { $regex: new RegExp(req.body.searchKey, 'i') } },
-              { artist: { $regex: new RegExp(req.body.searchKey, 'i') } }
-            ]
-          });
-console.log(results,'this is the result required')
-        }
+      if (req.body.searchKey && req.body.searchKey.length) {
+        songData = await songsDetails.find({
+          $or: [
+            { s_displayName: { $regex: new RegExp(req.body.searchKey, "i") } },
+            { artist: { $regex: new RegExp(req.body.searchKey, "i") } },
+          ],
+        });
+        console.log(results, "this is the result required");
+      }
       if (req.body.shuffle) {
         // Example usage:
         const array = songData;
@@ -213,27 +314,24 @@ app.post("/get/user/profile/details", async function (req, res, next) {
       error: "JOI validation error while fetching user profile details",
     });
   }
-  let blobData
-  let userData ={}
+  let blobData;
+  let userData = {};
   try {
     await UserDetails.find(
       { user_id: req.body.userID },
       "username status p_pic_path phone_no mail_id gender p_pic_path"
-    ).then((response)=>
-    {
-      console.log(response,'this is the user data')
-      userData['data'] =response
-      if(response[0].p_pic_path)
-        {
-          const fileData=fs.readFileSync(response[0].p_pic_path)
-          
-              //  blobData=new Blob([data])
-               blobData = Buffer.from(fileData).toString('base64');
-    
-              userData['profilePic']=blobData
-        }
+    ).then((response) => {
+      console.log(response, "this is the user data");
+      userData["data"] = response;
+      if (response[0].p_pic_path) {
+        const fileData = fs.readFileSync(response[0].p_pic_path);
 
-    })
+        //  blobData=new Blob([data])
+        blobData = Buffer.from(fileData).toString("base64");
+
+        userData["profilePic"] = blobData;
+      }
+    });
 
     console.log(userData, "this is the user data");
 
@@ -253,57 +351,58 @@ app.post("/get/user/profile/details", async function (req, res, next) {
   }
 });
 //!update user profile
-app.post("/update/user/profile",upload.single('file'),async (req, res, next) => {
-  try {
-    // req = decrypt(req.body);
-    // console.log(req,'this is the request after decrypting')
-    // console.log("API is -update/user/profile", req.body);
-    const result = {};
-    const updateProfile = Joi.object().required();
-    const { error } = updateProfile.validate(req.body);
-    if (error) {
-      console.log("joi validation", error);
-      return res.send(
-        encrypt({
-          error: "JOI validation error while updating user profile details",
-        })
-      );
-    }
-    let savePath
-    if(req.file)
-      {
-         savePath = reqDirForProfilePics + ((`${req.file.filename}`).trim());
+app.post(
+  "/update/user/profile",
+  upload.single("file"),
+  async (req, res, next) => {
+    try {
+      // req = decrypt(req.body);
+      // console.log(req,'this is the request after decrypting')
+      // console.log("API is -update/user/profile", req.body);
+      const result = {};
+      const updateProfile = Joi.object().required();
+      const { error } = updateProfile.validate(req.body);
+      if (error) {
+        console.log("joi validation", error);
+        return res.send(
+          encrypt({
+            error: "JOI validation error while updating user profile details",
+          })
+        );
       }
-console.log(__dirname,'this is the current directory')
-    await UserDetails.updateOne(
-      { user_id: req.body.userID }, // Filter  
-       { $set: {
-          username: req.body?.username,
-          gender: req.body?.gender,
-          mail_id: req.body?.email,
-          phone_no: req.body?.contact,
-          p_pic_path:savePath
-        }}
-      )
-    
-    result.success = true;
-    result.error = false;
-    result.message = "Successfully fetched";
-    return res.send(encrypt(result));
-    // res.send(result)
-  } catch (error) {
-    console.error(error);
-    // return res.status(500).json({ error: "Internal server error" });
-    result.error = true;
-    result.success = false;
-    result.message = "unable to fetch the user details";
-    return res.status(500).send(encrypt(result));
+      let savePath;
+      if (req.file) {
+        savePath = reqDirForProfilePics + `${req.file.filename}`.trim();
+      }
+      console.log(__dirname, "this is the current directory");
+      await UserDetails.updateOne(
+        { user_id: req.body.userID }, // Filter
+        {
+          $set: {
+            username: req.body?.username,
+            gender: req.body?.gender,
+            mail_id: req.body?.email,
+            phone_no: req.body?.contact,
+            p_pic_path: savePath,
+          },
+        }
+      );
+
+      result.success = true;
+      result.error = false;
+      result.message = "Successfully fetched";
+      return res.send(encrypt(result));
+      // res.send(result)
+    } catch (error) {
+      console.error(error);
+      // return res.status(500).json({ error: "Internal server error" });
+      result.error = true;
+      result.success = false;
+      result.message = "unable to fetch the user details";
+      return res.status(500).send(encrypt(result));
+    }
   }
-});
-
-
-
-
+);
 
 //!create playlist
 app.post("/create/playlist", async (req, res, next) => {
@@ -385,33 +484,32 @@ app.post("/fetch/playlist", async (req, res, next) => {
     console.log(userRecord.playlist, "this is the user record");
     const promises = [];
     const promiseTwo = [];
-    if(userRecord.playlist.length)
-      {
-
-        for (let record of userRecord.playlist) {
-          promises.push(playList.findOne({ _id: record.p_id }));
-        }
-        const promiseResponse = await Promise.all(promises);
-        console.log(promiseResponse, "this is the first promise response");
-        for (let item of promiseResponse) {
-          promiseTwo.push(songsDetails.findOne({ _id: item.songs[0] }));
-        }
-        const finalPromiseResponse = await Promise.all(promiseTwo);
-        console.log(finalPromiseResponse,'this is the final promise response')
-    
-        userRecord.playlist.forEach((playlist,index) => {
-          console.log(playlist,index)
-          if(finalPromiseResponse[index])
-            {
-              console.log("into the if conditoin")
-    
-              playlist['s_pic_path'] = finalPromiseResponse[index].s_pic_path; // Assuming initial value of 0 for number of songs
-            }
-        });
+    if (userRecord.playlist.length) {
+      for (let record of userRecord.playlist) {
+        promises.push(playList.findOne({ _id: record.p_id }));
       }
+      const promiseResponse = await Promise.all(promises);
+      console.log(promiseResponse, "this is the first promise response");
+      for (let item of promiseResponse) {
+        promiseTwo.push(songsDetails.findOne({ _id: item.songs[0] }));
+      }
+      const finalPromiseResponse = await Promise.all(promiseTwo);
+      console.log(finalPromiseResponse, "this is the final promise response");
 
-    
-    console.log(userRecord.playlist,'this is the user record respective playlist')
+      userRecord.playlist.forEach((playlist, index) => {
+        console.log(playlist, index);
+        if (finalPromiseResponse[index]) {
+          console.log("into the if conditoin");
+
+          playlist["s_pic_path"] = finalPromiseResponse[index].s_pic_path; // Assuming initial value of 0 for number of songs
+        }
+      });
+    }
+
+    console.log(
+      userRecord.playlist,
+      "this is the user record respective playlist"
+    );
     //map this playlist id to the respective user
     result.data = userRecord.playlist;
     result.success = true;
