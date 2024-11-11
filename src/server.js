@@ -3,7 +3,7 @@ const bodyParser = require("body-parser");
 const http = require("http");
 // const ngrok=require('ngrok')
 
-//const cors = require("cors");
+//const cors = require("cors");   
 // const HOST = "192.168.1.24";
 const HOST = '0.0.0.0'
 require("dotenv").config();
