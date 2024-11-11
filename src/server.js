@@ -3,15 +3,22 @@ const bodyParser = require("body-parser");
 const http = require("http");
 // const ngrok=require('ngrok')
 
-//const cors = require("cors");   
+//const cors = require("cors");
 // const HOST = "192.168.1.24";
 const HOST = '0.0.0.0'
 require("dotenv").config();
 const fs = require("fs");
 const path = require("path");
-const index = require("../index");
+const index = require("./index");
 const  connections = require("./db");
 const socketEvents = require("./sockets.js");
+const UserRoutes = require('./src/routes/users')
+const SignupRoutes = require('./src/routes/Authentication/signup')
+const LoginRoutes = require('./src/routes/Authentication/login')
+
+const routes = [UserRoutes, SignupRoutes, LoginRoutes]
+
+module.exports = routes
 
 connections.db();
 const PORT = process.env.SERVER_PORT || 3000;
