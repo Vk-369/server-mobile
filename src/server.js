@@ -9,7 +9,7 @@ const HOST = '0.0.0.0'
 require("dotenv").config();
 const fs = require("fs");
 const path = require("path");
-const index = require("./index");
+const index = require("../index");
 const  connections = require("./db");
 const socketEvents = require("./sockets.js");
 
