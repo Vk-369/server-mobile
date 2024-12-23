@@ -26,161 +26,91 @@ const storage = multer.diskStorage({
 const upload = multer({ storage });
 
 //! for uploading song
+// JavaScript
 
-app.post('/insert/newSong/byUrl', async (req, res) => {
+// const express = require('express');
+// const router = express.Router();
+// const ytdl = require('ytdl-core');
+
+
+app.post("/insert/newSong/byUrl", async (req, res) => {
   try {
-      console.log('Entered the upload API');
+    console.log("Entered the upload API");
 
-      // Validate request body using Joi
-      const uploadSchema = Joi.object({
-          url: Joi.string().required(),
-          displayName: Joi.string().required(),
-          imageUrl: Joi.string().optional(),
-          artist: Joi.string().optional(),
-      });
+    // Validate request body using Joi
+    const uploadSchema = Joi.object({
+      url: Joi.string().required(),
+      displayName: Joi.string().required(),
+      imageUrl: Joi.string().optional(),
+      artist: Joi.string().optional(),
+    });
 
-      const { error } = uploadSchema.validate(req.body);
-      if (error) {
-          console.log('Joi validation error:', error);
-          return res.status(400).send({ error: 'JOI validation error while uploading music' });
-      }
+    const { error } = uploadSchema.validate(req.body);
+    if (error) {
+      console.log("Joi validation error:", error);
+      return res.status(400).send({ error: "JOI validation error while uploading music" });
+    }
 
-      const youtubeUrl = req.body.url;
+    const youtubeUrl = req.body.url;
 
-      // Validate YouTube URL
-      if (!ytdl.validateURL(youtubeUrl)) {
-          return res.status(400).send('Invalid YouTube URL');
-      }
+    // Validate YouTube URL
+    if (!ytdl.validateURL(youtubeUrl)) {
+      return res.status(400).send("Invalid YouTube URL");
+    }
 
-      const info = await ytdl.getInfo(youtubeUrl);
-      const metaData = {
-          videoId: info.videoDetails.videoId,
-          title: info.videoDetails.title,
-          length: info.videoDetails.lengthSeconds,
-          iframeUrl: `https://www.youtube.com/embed/$$${info.videoDetails.videoId}`,
-          thumbnail: info.videoDetails.thumbnails[0].url,
-      };
+    const info = await ytdl.getInfo(youtubeUrl);
+    const metaData = {
+      videoId: info.videoDetails.videoId,
+      title: info.videoDetails.title,
+      length: info.videoDetails.lengthSeconds,
+      iframeUrl: `https://www.youtube.com/embed/${info.videoDetails.videoId}`,
+      thumbnail: info.videoDetails.thumbnails[0].url,
+    };
 
-      const name = metaData.title.split('|')[0].trim();
-      const songName=`${name}.mp3`
-      console.log(songName,'this is the song name to be saved with')
-      // const savePath = path.join(currenDir, `${name.replace(/ /g, '_')}.mp3`);
-      const savePath = path.join(currenDir,songName);
-      console.log(savePath, 'This is the path where the file will be stored');
+    console.log("this is the meta data to be stored",metaData)
 
-      const audioFormat = ytdl.chooseFormat(info.formats, { filter: 'audioonly' }); // Choose audio-only format
+    const name = metaData.title.split("|")[0].trim();
+    const savePath = path.join(currenDir, `${name.replace(/ /g, '_')}.mp3`);
+    console.log(savePath, "This is the path where the file will be stored");
 
-      
-      // Ensure the directory exists
-      fs.mkdirSync(currenDir, { recursive: true });
+    // const audioFormat = ytdl.chooseFormat(info.formats, { quality: "lowestaudio" });
 
-      console.log('Stream creation started');
+    // Ensure the directory exists
+    fs.mkdirSync(currenDir, { recursive: true });
 
-      const fileStream = fs.createWriteStream(savePath);
+    console.log("Stream creation started");
 
-      ytdl(youtubeUrl, { format: audioFormat })
-          .on('error', (err) => {
-              console.error('Error during download:', err);
-              fileStream.destroy();
-              res.status(500).send({ error: 'Error during audio download' });
-          })
-          .on('progress', (chunkSize, downloadedSize, totalSize) => {
-              // console.log(`Downloaded ${downloadedSize / 1024 / 1024} MB of ${totalSize / 1024 / 1024} MB`);
-          })
-          .pipe(fileStream);
+    // const fileStream = fs.createWriteStream(savePath);
+    // console.log(fileStream,'this is the file stream created')
 
-      fileStream.on('finish', () => {
-          console.log('Audio saved successfully');
+    // fileStream.on("error", (err) => {
+    //   console.log("Stream reading error:", err);
+    //   res.status(500).send({ error: "Error saving the audio file" });
+    // });
 
-          // Store metadata in database (Assuming `storeDataInDb` is implemented)
-          // storeDataInDb(metaData, name, req);
-          storeDataInDb(metaData, songName, req);
+    // fileStream.on("finish", () => {
+    //   console.log("Audio saved successfully");
 
-          res.send({ message: 'Audio file saved successfully', success: true });
-      });
+      // Store metadata in database (Assuming `storeDataInDb` is implemented)
+      storeDataInDb(metaData, name, req);
 
-      console.log('Stream creation done');
+      // res.send({ message: "Audio file saved successfully", success: true });
+    // });
+
+    // Pipe the ytdl stream to the fileStream
+    // ytdl(youtubeUrl, { format: audioFormat })
+    //   .pipe(fileStream)
+    //   .on("error", (err) => {
+    //     console.error("Error during streaming:", err);
+    //     res.status(500).send({ error: "Error during audio streaming" });
+    //   });
+
+    console.log("Stream creation done");
   } catch (error) {
-      console.error('Error:', error);
-      res.status(500).send({ error: 'An unexpected error occurred' });
+    console.error("Error:", error);
+    res.status(500).send({ error: "An unexpected error occurred" });
   }
 });
-// app.post("/insert/newSong/byUrl", async (req, res) => {
-//   try {
-//     console.log("Entered the upload API");
-
-//     // Validate request body using Joi
-//     const uploadSchema = Joi.object({
-//       url: Joi.string().required(),
-//       displayName: Joi.string().required(),
-//       imageUrl: Joi.string().optional(),
-//       artist: Joi.string().optional(),
-//     });
-
-//     const { error } = uploadSchema.validate(req.body);
-//     if (error) {
-//       console.log("Joi validation error:", error);
-//       return res.status(400).send({ error: "JOI validation error while uploading music" });
-//     }
-
-//     const youtubeUrl = req.body.url;
-
-//     // Validate YouTube URL
-//     if (!ytdl.validateURL(youtubeUrl)) {
-//       return res.status(400).send("Invalid YouTube URL");
-//     }
-
-//     const info = await ytdl.getInfo(youtubeUrl);
-//     const metaData = {
-//       videoId: info.videoDetails.videoId,
-//       title: info.videoDetails.title,
-//       length: info.videoDetails.lengthSeconds,
-//       iframeUrl: `https://www.youtube.com/embed/${info.videoDetails.videoId}`,
-//       thumbnail: info.videoDetails.thumbnails[0].url,
-//     };
-
-//     const name = metaData.title.split("|")[0].trim();
-//     const savePath = path.join(currenDir, `${name.replace(/ /g, '_')}.mp3`);
-//     console.log(savePath, "This is the path where the file will be stored");
-
-//     const audioFormat = ytdl.chooseFormat(info.formats, { quality: "lowestaudio" });
-
-//     // Ensure the directory exists
-//     fs.mkdirSync(currenDir, { recursive: true });
-
-//     console.log("Stream creation started");
-
-//     const fileStream = fs.createWriteStream(savePath);
-//     // console.log(fileStream,'this is the file stream created')
-
-//     fileStream.on("error", (err) => {
-//       console.log("Stream reading error:", err);
-//       res.status(500).send({ error: "Error saving the audio file" });
-//     });
-
-//     fileStream.on("finish", () => {
-//       console.log("Audio saved successfully");
-
-//       // Store metadata in database (Assuming `storeDataInDb` is implemented)
-//       storeDataInDb(metaData, name, req);
-
-//       res.send({ message: "Audio file saved successfully", success: true });
-//     });
-
-//     // Pipe the ytdl stream to the fileStream
-//     ytdl(youtubeUrl, { format: audioFormat })
-//       .pipe(fileStream)
-//       .on("error", (err) => {
-//         console.error("Error during streaming:", err);
-//         res.status(500).send({ error: "Error during audio streaming" });
-//       });
-
-//     console.log("Stream creation done");
-//   } catch (error) {
-//     console.error("Error:", error);
-//     res.status(500).send({ error: "An unexpected error occurred" });
-//   }
-// });
 app.get("/home", async function (req, res, next) {
   console.log("got ht");
   res.send("hello baiebee");
@@ -189,11 +119,12 @@ app.get("/home", async function (req, res, next) {
 app.get("/get/selected/music/file", async function (req, res, next) {
   // const body = decrypt(req.body);
   // req.body = decrypt(req);
-
-  console.log("API is -/get/selected/music/file ");
+  
+  console.log("API is -/get/selected/music/file ",req.query.s_id);
   try {
     
     const record = await songsDetails.findOne({ _id: req.query.s_id });
+    console.log(record,'this is the record of the selected song')
     // readStream=fs.createReadStream(currenDir + `${record.s_path}.mp3`)
     if (record) {
       console.log("Streaming audio request received.");
@@ -484,7 +415,7 @@ app.post("/fetch/playlist", async (req, res, next) => {
     console.log(userRecord.playlist, "this is the user record");
     const promises = [];
     const promiseTwo = [];
-    if (userRecord.playlist.length) {
+    if (userRecord?.playlist?.length) {
       for (let record of userRecord.playlist) {
         promises.push(playList.findOne({ _id: record.p_id }));
       }
@@ -646,7 +577,7 @@ async function storeDataInDb(metaData, filePath, req) {
   console.log("this is to store the data in the data base");
   try {
     const insertedSongData = await songsDetails.create({
-      s_path: filePath, //the file path would be the file name in the dat while retriving that we need to add current directory as prefix
+      s_path: `${filePath}.mp3`, //the file path would be the file name in the dat while retriving that we need to add current directory as prefix
       s_dis_name: metaData.title,
       i_tag: metaData.iframeUrl,
       s_pic_path: metaData.thumbnail,
