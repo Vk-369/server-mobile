@@ -1,0 +1,41 @@
+// require("dotenv").config();
+// const mongoose = require("mongoose");
+
+// const URL = process.env.DB;
+
+// const db = async () => {
+//     console.log('test', URL)
+//   try {
+    
+//     await mongoose.connect('mongodb://127.0.0.1:27017', {directConnection: true, });
+//     console.log("connection established");
+//   } catch (err) {
+//     console.log(err, "error while connecting to the db");
+//   }
+// };
+// module.exports.db = db;
+
+// import { connect } from 'mssql';
+const sql = require('mssql'); // Use 'require' instead of 'import'
+
+// Azure SQL Database connection configuration
+const config = {
+  user: 'adminserver',                    // Your SQL server username
+  password: 'tesla@369',             // Your SQL server password (replace {your_password} with the actual password)
+  server: 'serverfortesting.database.windows.net', // Your server name
+  database: 'testingDatabase',             // Your database name
+  // options: {
+  //   encrypt: true,                         // Encrypt connection (necessary for Azure)
+  //   trustServerCertificate: false          // Use this only if you have SSL certificates
+  // }
+};
+
+
+  sql.connect(config)
+    .then(() => {
+      console.log("Connected to SQL Database!");
+    })
+    .catch(err => {
+      console.error("Error connecting to SQL Database: ", err);
+    });
+
