@@ -111,7 +111,7 @@ app.post("/insert/newSong/byUrl", async (req, res) => {
     res.status(500).send({ error: "An unexpected error occurred" });
   }
 });
-app.get("/home", async function (req, res, next) {
+app.get("/", async function (req, res, next) {
   console.log("got ht");
   res.send("hello baiebee");
 });
