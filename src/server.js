@@ -9,7 +9,7 @@ require("dotenv").config();
 const index = require("./index");
 const  connections = require("./db");
 const socketEvents = require("./sockets.js");
-// connections.db();
+connections.db();
 const PORT = process.env.PORT || 3000;
 const server = http.createServer(app);
 app.use(bodyParser.json());
