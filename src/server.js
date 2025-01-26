@@ -25,11 +25,11 @@ const io = socketEvents(server);
 
 //!testing api
 app.get("/test", async function (req, res, next) {
-  console.log("got ht",currenDir);
+  console.log("got ht");
   res.send("hello baiebee");
 });
 app.post("/post/posting", async function (req, res, next) {
-  console.log("got ht",currenDir);
+  console.log("got ht");
   // req.body = decrypt(req);
 
   res.send(req.body);
