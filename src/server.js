@@ -24,11 +24,11 @@ const io = socketEvents(server);
 
 
 //!testing api
-router.get("/test", async function (req, res, next) {
+app.get("/test", async function (req, res, next) {
   console.log("got ht",currenDir);
   res.send("hello baiebee");
 });
-router.post("/post/posting", async function (req, res, next) {
+app.post("/post/posting", async function (req, res, next) {
   console.log("got ht",currenDir);
   // req.body = decrypt(req);
 
