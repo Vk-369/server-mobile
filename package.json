@@ -4,8 +4,8 @@
   "private": true,
   "main": "src/server.js",
   "scripts": {
-    "start": "node functions/server.js",
-    "dev": "nodemon server.js",
+    "start": "node src/server.js",
+    "dev": "nodemon src/server.js",
     "build": "netlify deploy --prod"
   },
   "dependencies": {
