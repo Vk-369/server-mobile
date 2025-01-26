@@ -25,7 +25,7 @@ const io = socketEvents(server);
 
 //!testing api
 app.get("/test", async function (req, res, next) {
-  console.log("got ht");
+  console.log("this is the health check api");
   res.send("hello baiebee");
 });
 app.post("/post/posting", async function (req, res, next) {
