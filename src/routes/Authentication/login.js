@@ -1,6 +1,9 @@
 const express = require("express");
+var app = express.Router();
 const Joi = require("joi");
 const jwt = require("jsonwebtoken");
+const cors = require("cors");
+app.use(cors());
 
 const UserDetails = require("../../models/userDetails");
 
@@ -9,7 +12,9 @@ const { encrypt, decrypt } = require("../../library/encryption");
 const LoginRoutes = express.Router();
 
 LoginRoutes.post("/login/user", async (req, res) => {
-  req.body = decrypt(req);
+  console.log("/login/user/login/user")
+  console.log(req.body,'this is the req')
+  req.body = decrypt(req,'login');
   const Schema = Joi.object({
     mail_id: Joi.string().required(),
     password: Joi.string().required(),

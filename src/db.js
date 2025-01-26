@@ -11,7 +11,7 @@ const db = async () => {
     console.log('test', URL)
   try {
     
-    await mongoose.connect('mongodb://127.0.0.1:27017/sar', {directConnection: true, });
+    await mongoose.connect('mongodb://127.0.0.1:27017/test', {directConnection: true, });
     console.log("connection established");
   } catch (err) {
     console.log(err, "error while connecting to the db");

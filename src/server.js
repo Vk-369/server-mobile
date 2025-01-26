@@ -1,49 +1,56 @@
-const express = require("express")();
+// const serverless=require('serverless-http')
+const express = require("express");
+const app=express()
 const bodyParser = require("body-parser");
 const http = require("http");
-// const ngrok=require('ngrok')
-
-// var app = express.Router();
-
-//const cors = require("cors");
-// const HOST = "192.168.1.24";
+var router = express.Router();
 const HOST = '0.0.0.0'
 require("dotenv").config();
-const fs = require("fs");
-const path = require("path");
 const index = require("./index");
 const  connections = require("./db");
 const socketEvents = require("./sockets.js");
-// const UserRoutes = require('./src/routes/users')
-// const SignupRoutes = require('./src/routes/Authentication/signup')
-// const LoginRoutes = require('./src/routes/Authentication/login')
-
-// const routes = [UserRoutes, SignupRoutes, LoginRoutes]
-
-// module.exports = routes
-
 connections.db();
 const PORT = process.env.PORT || 3000;
+const server = http.createServer(app);
+app.use(bodyParser.json());
+app.use(index);
 
-const server = http.createServer(express);
+// app.use((req, res, next) => {
+//   res.setHeader('Access-Control-Allow-Origin', '*');
+//   next();
+// });
 
-express.use(bodyParser.json());
-express.use(index);
-//express.use(cors());
 const io = socketEvents(server);
 
-// app.get("/", async function (req, res, next) {
-//   console.log("got ht");
-//   res.send("hello baiebee");
-// });
+
+//!testing api
+router.get("/test", async function (req, res, next) {
+  console.log("got ht",currenDir);
+  res.send("hello baiebee");
+});
+router.post("/post/posting", async function (req, res, next) {
+  console.log("got ht",currenDir);
+  // req.body = decrypt(req);
+
+  res.send(req.body);
+});
 server.listen(PORT, HOST, (req, res) => {
   console.log("server started at", `${PORT}`);
+})
 
-//   ngrok.connect(PORT).then(ngrokurl=>
-//   {
-// console.log(ngrokurl)
-//   }
-//   )
-});
+//!NOTE ALL THE API CALLS ARE SHIFTING TO THIS FILE FOR THE TIME BEING
+//! API CALLS STARTS
+
+
+
 
 module.exports = server;
+
+
+//!API CALLS ENDS
+//  app.use('/.netlify/functions/server', router);
+// app.use('/.netlify/functions/routes/Authentication/login', router);
+// functions/routes/Authentication/login
+// module.exports.handler = serverless(app);
+
+

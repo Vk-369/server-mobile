@@ -11,7 +11,7 @@ const decode = (body) => {
     return decryptObj
 }
 
-const decrypt = (body) => {
+const decrypt = (body,origin='') => {
     return decode(body.body.edc)
 }
 

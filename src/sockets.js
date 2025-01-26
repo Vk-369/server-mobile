@@ -45,7 +45,8 @@ module.exports = (server) => {
       console.log('Play event received',event);
     const record = await songsDetails.findOne({ _id:event.songId});
     console.log(record,'this is the record needed')
-    const audioPath = currenDir + `${record.s_path}.mp3`; // Change the file name and path accordingly
+    const audioPath = currenDir + `${record.s_path}`; // Change the file name and path accordingly
+    console.log(audioPath,"this is the audio path")
     io.to(event.roomId.toString()).emit('metaData',record)
       const readStream = fs.createReadStream(audioPath);
       // const readStream = fs.createReadStream(currenDir);

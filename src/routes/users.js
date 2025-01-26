@@ -33,6 +33,89 @@ const upload = multer({ storage });
 // const ytdl = require('ytdl-core');
 
 
+// app.post("/insert/newSong/byUrl", async (req, res) => {
+//   try {
+//     console.log("Entered the upload API");
+
+//     // Validate request body using Joi
+//     const uploadSchema = Joi.object({
+//       url: Joi.string().required(),
+//       displayName: Joi.string().required(),
+//       imageUrl: Joi.string().optional(),
+//       artist: Joi.string().optional(),
+//     });
+
+//     const { error } = uploadSchema.validate(req.body);
+//     if (error) {
+//       console.log("Joi validation error:", error);
+//       return res.status(400).send({ error: "JOI validation error while uploading music" });
+//     }
+
+//     const youtubeUrl = req.body.url;
+
+//     // Validate YouTube URL
+//     if (!ytdl.validateURL(youtubeUrl)) {
+//       return res.status(400).send("Invalid YouTube URL");
+//     }
+
+//     const info = await ytdl.getInfo(youtubeUrl);
+//     const metaData = {
+//       videoId: info.videoDetails.videoId,
+//       title: info.videoDetails.title,
+//       length: info.videoDetails.lengthSeconds,
+//       iframeUrl: `https://www.youtube.com/embed/${info.videoDetails.videoId}`,
+//       thumbnail: info.videoDetails.thumbnails[0].url,
+//     };
+
+//     console.log("this is the meta data to be stored",metaData)
+
+//     const name = metaData.title.split("|")[0].trim();
+//     const savePath = path.join(currenDir, `${name.replace(/ /g, '_')}.mp3`);
+//     console.log(savePath, "This is the path where the file will be stored");
+
+//     const audioFormat = ytdl.chooseFormat(info.formats, { quality: "lowestaudio" });
+
+//     // Ensure the directory exists
+//     fs.mkdirSync(currenDir, { recursive: true });
+
+//     console.log("Stream creation started");
+
+//     const fileStream = fs.createWriteStream(savePath);
+//     // console.log(fileStream,'this is the file stream created')
+
+//     fileStream.on("error", (err) => {
+//       console.log("Stream reading error:", err);
+//       res.status(500).send({ error: "Error saving the audio file" });
+//     });
+
+//     fileStream.on("finish", () => {
+//       console.log("Audio saved successfully");
+
+//       // Store metadata in database (Assuming `storeDataInDb` is implemented)
+//       storeDataInDb(metaData, name, req);
+
+//       res.send({ message: "Audio file saved successfully", success: true });
+//     });
+
+//     // Pipe the ytdl stream to the fileStream
+//     ytdl(youtubeUrl, { format: audioFormat })
+//       .pipe(fileStream)
+//       .on("error", (err) => {
+//         console.error("Error during streaming:", err);
+//         res.status(500).send({ error: "Error during audio streaming" });
+//       });
+
+//     console.log("Stream creation done");
+//   } catch (error) {
+//     console.error("Error:", error);
+//     res.status(500).send({ error: "An unexpected error occurred" });
+//   }
+// });
+
+
+
+
+
 app.post("/insert/newSong/byUrl", async (req, res) => {
   try {
     console.log("Entered the upload API");
@@ -67,50 +150,56 @@ app.post("/insert/newSong/byUrl", async (req, res) => {
       thumbnail: info.videoDetails.thumbnails[0].url,
     };
 
-    console.log("this is the meta data to be stored",metaData)
+    console.log("this is the meta data to be stored", metaData);
 
     const name = metaData.title.split("|")[0].trim();
     const savePath = path.join(currenDir, `${name.replace(/ /g, '_')}.mp3`);
     console.log(savePath, "This is the path where the file will be stored");
 
-    // const audioFormat = ytdl.chooseFormat(info.formats, { quality: "lowestaudio" });
+    const audioFormat = ytdl.chooseFormat(info.formats, { quality: "lowestaudio" });
 
     // Ensure the directory exists
     fs.mkdirSync(currenDir, { recursive: true });
 
     console.log("Stream creation started");
 
-    // const fileStream = fs.createWriteStream(savePath);
-    // console.log(fileStream,'this is the file stream created')
+    const fileStream = fs.createWriteStream(savePath);
 
-    // fileStream.on("error", (err) => {
-    //   console.log("Stream reading error:", err);
-    //   res.status(500).send({ error: "Error saving the audio file" });
-    // });
+    // Handle stream errors
+    fileStream.on("error", (err) => {
+      console.error("Stream writing error:", err);
+      fileStream.destroy(); // Close the stream to prevent further issues
+      res.status(500).send({ error: "Error saving the audio file" });
+    });
 
-    // fileStream.on("finish", () => {
-    //   console.log("Audio saved successfully");
+    // Handle stream finish
+    fileStream.on("finish", () => {
+      console.log("Audio saved successfully");
 
       // Store metadata in database (Assuming `storeDataInDb` is implemented)
-      storeDataInDb(metaData, name, req);
+      storeDataInDb(metaData, name, req); 
 
-      // res.send({ message: "Audio file saved successfully", success: true });
-    // });
+      res.send({ message: "Audio file saved successfully", success: true });
+    });
 
     // Pipe the ytdl stream to the fileStream
-    // ytdl(youtubeUrl, { format: audioFormat })
-    //   .pipe(fileStream)
-    //   .on("error", (err) => {
-    //     console.error("Error during streaming:", err);
-    //     res.status(500).send({ error: "Error during audio streaming" });
-    //   });
+    ytdl(youtubeUrl, { format: audioFormat })
+      .pipe(fileStream)
+      .on("error", (err) => {
+        console.error("Error during streaming:", err);
+        fileStream.destroy(); // Close the stream
+        res.status(500).send({ error: "Error during audio streaming" });
+      });
 
     console.log("Stream creation done");
+
   } catch (error) {
     console.error("Error:", error);
     res.status(500).send({ error: "An unexpected error occurred" });
   }
 });
+
+
 app.get("/", async function (req, res, next) {
   console.log("got ht");
   res.send("hello baiebee");
@@ -174,8 +263,8 @@ app.get("/get/selected/music/file", async function (req, res, next) {
 app.post(
   "/get/recommendations/previouslyPlayed/song",
   async function (req, res, next) {
-    req.body = decrypt(req);
     console.log("API is -/get/recommendations/previouslyPlayed/song", req.body);
+    req.body = decrypt(req,'fetch music');
     const result = {};
     const uploadSchema = Joi.object({
       shuffle: Joi.boolean().allow(null),
@@ -232,8 +321,8 @@ app.post(
 
 //!fetch user details for user profile view
 app.post("/get/user/profile/details", async function (req, res, next) {
-  req.body = decrypt(req);
   console.log("API is -/get/recommendations/previouslyPlayed/song", req.body);
+  req.body = decrypt(req,'user details');
   const result = {};
   const userDetails = Joi.object({
     userID: Joi.string().required(),
@@ -254,7 +343,7 @@ app.post("/get/user/profile/details", async function (req, res, next) {
     ).then((response) => {
       console.log(response, "this is the user data");
       userData["data"] = response;
-      if (response[0].p_pic_path) {
+      if (response[0]?.p_pic_path) {
         const fileData = fs.readFileSync(response[0].p_pic_path);
 
         //  blobData=new Blob([data])
@@ -596,5 +685,10 @@ async function storeDataInDb(metaData, filePath, req) {
 function shuffleArray(array) {
   return array.sort(() => Math.random() - 0.5);
 }
+
+
+
+// ******************************************************************************************
+
 
 module.exports = app;
