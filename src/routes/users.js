@@ -336,6 +336,7 @@ app.post("/get/user/profile/details", async function (req, res, next) {
   }
   let blobData;
   let userData = {};
+  let fileData
   try {
     await UserDetails.find(
       { user_id: req.body.userID },
@@ -344,16 +345,28 @@ app.post("/get/user/profile/details", async function (req, res, next) {
       console.log(response, "this is the user data");
       userData["data"] = response;
       if (response[0]?.p_pic_path) {
-        const fileData = fs.readFileSync(response[0].p_pic_path);
 
+        if (fs.existsSync(response[0]?.p_pic_path)) {
+        let fileData = fs.readFileSync(response[0].p_pic_path);
+        // const data = fs.readFileSync(filePath, 'utf8');
+          blobData = Buffer.from(fileData).toString("base64");
+
+          userData["profilePic"] = blobData;
+        } else {
+          console.log('File not found at the specified path!');
+        }
+
+
+        // const fileData = fs.readFileSync(response[0].p_pic_path);
+ 
         //  blobData=new Blob([data])
-        blobData = Buffer.from(fileData).toString("base64");
+        // blobData = Buffer.from(fileData).toString("base64");
 
-        userData["profilePic"] = blobData;
+        // userData["profilePic"] = blobData;
       }
     });
 
-    console.log(userData, "this is the user data");
+    // console.log(userData, "this is the user data");
 
     result.success = true;
     result.error = false;
