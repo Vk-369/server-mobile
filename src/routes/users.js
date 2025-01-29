@@ -156,40 +156,35 @@ app.post("/insert/newSong/byUrl", async (req, res) => {
     const savePath = path.join(currenDir, `${name.replace(/ /g, '_')}.mp3`);
     console.log(savePath, "This is the path where the file will be stored");
 
-    const audioFormat = ytdl.chooseFormat(info.formats, { quality: "lowestaudio" });
 
-    // Ensure the directory exists
-    fs.mkdirSync(currenDir, { recursive: true });
-
-    console.log("Stream creation started");
-
-    const fileStream = fs.createWriteStream(savePath);
-
-    // Handle stream errors
-    fileStream.on("error", (err) => {
-      console.error("Stream writing error:", err);
-      fileStream.destroy(); // Close the stream to prevent further issues
-      res.status(500).send({ error: "Error saving the audio file" });
-    });
-
-    // Handle stream finish
-    fileStream.on("finish", () => {
-      console.log("Audio saved successfully");
+    // const audioFormat = ytdl.chooseFormat(info.formats, { quality: "lowestaudio" });
+    // fs.mkdirSync(currenDir, { recursive: true });
+    // console.log("Stream creation started");
+    // const fileStream = fs.createWriteStream(savePath);
+    // // Handle stream errors
+    // fileStream.on("error", (err) => {
+    //   console.error("Stream writing error:", err);
+    //   fileStream.destroy(); // Close the stream to prevent further issues
+    //   res.status(500).send({ error: "Error saving the audio file" });
+    // });
+    // // Handle stream finish
+    // fileStream.on("finish", () => {
+    //   console.log("Audio saved successfully");
 
       // Store metadata in database (Assuming `storeDataInDb` is implemented)
       storeDataInDb(metaData, name, req); 
 
-      res.send({ message: "Audio file saved successfully", success: true });
-    });
+      res.send({ message: "Audio file saved successfully", success: true ,name:savePath});
+    // });
 
     // Pipe the ytdl stream to the fileStream
-    ytdl(youtubeUrl, { format: audioFormat })
-      .pipe(fileStream)
-      .on("error", (err) => {
-        console.error("Error during streaming:", err);
-        fileStream.destroy(); // Close the stream
-        res.status(500).send({ error: "Error during audio streaming" });
-      });
+    // ytdl(youtubeUrl, { format: audioFormat })
+    //   .pipe(fileStream)
+    //   .on("error", (err) => {
+    //     console.error("Error during streaming:", err);
+    //     fileStream.destroy(); // Close the stream
+    //     res.status(500).send({ error: "Error during audio streaming" });
+    //   });
 
     console.log("Stream creation done");
 
