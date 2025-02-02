@@ -12,6 +12,7 @@ const userDetailsSchema = new Schema({
   password: { required: true, type: String },
   status: { required: true, type: Number },
   playlist: { required: false, type: Object },
+  recentlyPlayedList:{required:false,type:Array},
   // created_at: { required: true, type: Date },
   // updated_at: { required: true, type: Date },
 });

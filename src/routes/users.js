@@ -126,6 +126,8 @@ app.post("/insert/newSong/byUrl", async (req, res) => {
       displayName: Joi.string().required(),
       imageUrl: Joi.string().optional(),
       artist: Joi.string().optional(),
+      path:Joi.string().required(),
+      lang:Joi.string().required()
     });
 
     const { error } = uploadSchema.validate(req.body);
@@ -142,6 +144,7 @@ app.post("/insert/newSong/byUrl", async (req, res) => {
     }
 
     const info = await ytdl.getInfo(youtubeUrl);
+    console.log(info)
     const metaData = {
       videoId: info.videoDetails.videoId,
       title: info.videoDetails.title,
@@ -152,39 +155,12 @@ app.post("/insert/newSong/byUrl", async (req, res) => {
 
     console.log("this is the meta data to be stored", metaData);
 
-    const name = metaData.title.split("|")[0].trim();
+    const name=req.body.path
     const savePath = path.join(currenDir, `${name.replace(/ /g, '_')}.mp3`);
     console.log(savePath, "This is the path where the file will be stored");
-
-
-    // const audioFormat = ytdl.chooseFormat(info.formats, { quality: "lowestaudio" });
-    // fs.mkdirSync(currenDir, { recursive: true });
-    // console.log("Stream creation started");
-    // const fileStream = fs.createWriteStream(savePath);
-    // // Handle stream errors
-    // fileStream.on("error", (err) => {
-    //   console.error("Stream writing error:", err);
-    //   fileStream.destroy(); // Close the stream to prevent further issues
-    //   res.status(500).send({ error: "Error saving the audio file" });
-    // });
-    // // Handle stream finish
-    // fileStream.on("finish", () => {
-    //   console.log("Audio saved successfully");
-
-      // Store metadata in database (Assuming `storeDataInDb` is implemented)
       storeDataInDb(metaData, name, req); 
 
       res.send({ message: "Audio file saved successfully", success: true ,name:savePath});
-    // });
-
-    // Pipe the ytdl stream to the fileStream
-    // ytdl(youtubeUrl, { format: audioFormat })
-    //   .pipe(fileStream)
-    //   .on("error", (err) => {
-    //     console.error("Error during streaming:", err);
-    //     fileStream.destroy(); // Close the stream
-    //     res.status(500).send({ error: "Error during audio streaming" });
-    //   });
 
     console.log("Stream creation done");
 
@@ -210,6 +186,44 @@ app.get("/get/selected/music/file", async function (req, res, next) {
     const record = await songsDetails.findOne({ _id: req.query.s_id });
     console.log(record,'this is the record of the selected song')
     // readStream=fs.createReadStream(currenDir + `${record.s_path}.mp3`)
+
+    let recentlyPlayed = [];
+
+    // Fetch the user details (use findOne for a single result)
+    const user = await UserDetails.findOne({ user_id: req.query.user_ID });
+    
+    console.log(user, "This is the user data");
+    
+    // Ensure recentlyPlayedList is always an array (use fallback if not present)
+    recentlyPlayed = user?.recentlyPlayedList || [];
+    
+    // Modify the recentlyPlayedList based on its length
+    if (recentlyPlayed.length > 10) {
+      recentlyPlayed.shift(); // Remove the first item if list exceeds 10
+    }
+    if(!recentlyPlayed.includes(req.query.s_id))
+    {
+      recentlyPlayed.push(req.query.s_id); // Add the new song ID to the list
+    }
+    
+    console.log(recentlyPlayed, "Updated recentlyPlayed list");
+    
+    // Update the user's recentlyPlayedList (upsert if document does not exist)
+    const updateResult = await UserDetails.updateOne(
+      { user_id: req.query.user_ID }, // Filter by user_id
+      { $set: { recentlyPlayedList: recentlyPlayed } },
+      { upsert: true } // Insert a new document if no matching document is found
+    );
+    
+    // Log the result of the update operation
+    console.log(updateResult, "Update result");
+    
+    // Fetch the updated user details to verify the change
+    const details = await UserDetails.findOne({ user_id: req.query.user_ID });
+    console.log(details, "Details after the update");
+
+
+
     if (record) {
       console.log("Streaming audio request received.");
       const audioPath = currenDir + `${record.s_path}`; // Change the file name and path accordingly
@@ -264,6 +278,7 @@ app.post(
     const uploadSchema = Joi.object({
       shuffle: Joi.boolean().allow(null),
       searchKey: Joi.string().allow(null),
+      // user_ID:Joi.string().required()
     });
     console.log(req.body, "this is the body in the search");
     const { error } = uploadSchema.validate(req.body);
@@ -278,9 +293,10 @@ app.post(
         !req.body.searchKey ||
         (req.body.searchKey && !req.body.searchKey.length)
       ) {
-        songData = await songsDetails.find({});
+        songData = await songsDetails.find({})
+        // .skip(10).limit(5);
+        
       }
-      // .limit(10);
       if (req.body.searchKey && req.body.searchKey.length) {
         songData = await songsDetails.find({
           $or: [
@@ -683,6 +699,7 @@ async function storeDataInDb(metaData, filePath, req) {
       s_displayName: req.body.displayName,
       image_url: req.body?.imageUrl,
       artist: req.body?.artist,
+      language:req.body.lang
     });
     console.log("data inserted successfully");
   } catch (err) {

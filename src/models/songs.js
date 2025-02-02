@@ -10,6 +10,7 @@ const songsSchema = new Schema({
     s_displayName:{require:true,type:String},
     image_url:{require:true,type:String},
     artist:{require:true,type:String},
+    language:{require:true,type:String},
   });
 
 const songsDetails = mongoose.model('song', songsSchema);
