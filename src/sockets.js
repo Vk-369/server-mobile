@@ -1,98 +1,153 @@
-
 const fs = require("fs");
 const path = require("path");
 const songsDetails = require("./models/songs");
 
-console.log(__dirname,'this is the directory in the server js file')
-
-// const currenDir = path.join(__dirname, "../src/musicFiles/Miami - Video Song.mp3");  
-// console.log(currenDir,'songs')
-const currenDir = path.join(__dirname, "../src/musicFiles/");
-
+const musicDirectory = path.join(__dirname, "musicFiles");
 
 module.exports = (server) => {
-    const io=require('socket.io')(server,{
-    cors:{
-      origin:'*'
-    }
-  })
+  const io = require("socket.io")(server, {
+    cors: {
+      origin: "*",
+    },
+  });
+  const roomPlayback = new Map();
 
-  io.on('connection', (socket) => {
-    console.log('A user connected');
-    
-    socket.on('msg', (data) => {
-      console.log("Received message:", data,'lllllllllllll',data.roomId);
-      io.to((data.roomId).toString()).emit('message', data);
-    });
-  
-    socket.on('create room', (roomId) => {
-      socket.join(roomId);
-      console.log(roomId, 'Room created');  
-    });
-  
-    socket.on('join room', (joinId) => {
-      socket.join(joinId);
-      console.log(joinId, 'Room joined');
-      //this code is just check the socket ids present inside the room that is
-      const roomSockets = io.sockets.adapter.rooms.get(joinId);
-      if (roomSockets) console.log(Array.from(roomSockets));
-    });
-  
+  const getRoomId = (value) => {
+    if (value === undefined || value === null) return null;
+    const roomId = String(value).trim();
+    return roomId.length > 0 ? roomId : null;
+  };
 
-    // {roomId:this.roomId,songId:songId}
+  const getPosition = (state) => {
+    if (state.paused) return state.position;
+    return state.position + (Date.now() - state.startedAt) / 1000;
+  };
 
-    socket.on('play', async (event) => {
-      console.log('Play event received',event);
-    const record = await songsDetails.findOne({ _id:event.songId});
-    console.log(record,'this is the record needed')
-    const audioPath = currenDir + `${record.s_path}`; // Change the file name and path accordingly
-    console.log(audioPath,"this is the audio path")
-    io.to(event.roomId.toString()).emit('metaData',record)
-      const readStream = fs.createReadStream(audioPath);
-      // const readStream = fs.createReadStream(currenDir);
-      readStream.on('data', (chunks) => {
-        console.log(chunks,"chunk **************",audioPath)
-        io.to(event.roomId.toString()).emit('stream', chunks);
-      });
-  
-  
+  const emitPlaybackState = (target, roomId, state) => {
+    target.emit("playback:sync", {
+      roomId,
+      songId: state.songId,
+      position: getPosition(state),
+      playing: !state.paused,
+      serverTime: Date.now(),
+    });
+  };
+
+  const joinRoom = (socket, roomId) => {
+    socket.join(roomId);
+    const state = roomPlayback.get(roomId);
+    if (!state) return;
+    socket.emit("metaData", state.record);
+    emitPlaybackState(socket, roomId, state);
+  };
+
+  io.on("connection", (socket) => {
+    socket.on("msg", (data) => {
+      const roomId = getRoomId(data?.roomId);
+      if (roomId) io.to(roomId).emit("message", data);
     });
 
+    socket.on("create room", (value) => {
+      const roomId = getRoomId(value);
+      if (roomId) joinRoom(socket, roomId);
+    });
 
-    socket.on('resume play',(data)=>
-    {
-      console.log('resume play socket event')
-      io.to(data.roomId.toString()).emit('resume play');
+    socket.on("join room", (value) => {
+      const roomId = getRoomId(value);
+      if (roomId) joinRoom(socket, roomId);
+    });
 
-    })
-    socket.on('pause play',(data)=>
-    {
-      console.log('this is into the pause play event ')
-      io.to(data.roomId.toString()).emit('pause play');
+    socket.on("leave room", (value) => {
+      const roomId = getRoomId(value);
+      if (roomId) socket.leave(roomId);
+    });
 
-    })
-    socket.on('play next',(data)=>
-    {
-      console.log('this is into the pause play event ',data)
-      io.to(data.roomId.toString()).emit('next play this',data);
+    socket.on("play", async (event) => {
+      const roomId = getRoomId(event?.roomId);
+      if (!roomId || !event?.songId) {
+        socket.emit("playback:error", { message: "A room and song are required." });
+        return;
+      }
 
-    })
-    socket.on('play previous one',(data)=>
-    {
-      console.log('this is into the pause play event ',data)
-      io.to(data.roomId.toString()).emit('next play this',data);
+      try {
+        const record = await songsDetails.findOne({ _id: event.songId });
+        if (!record?.s_path) throw new Error("Song file is unavailable.");
 
-    })
-    socket.on('seek',(data)=>
-    {
-      console.log('this is into song seeking event ',data)
-      io.to(data.roomId.toString()).emit('song seeking',data);
+        const audioPath = path.resolve(musicDirectory, record.s_path);
+        const relativePath = path.relative(musicDirectory, audioPath);
+        if (
+          relativePath === ".." ||
+          relativePath.startsWith(`..${path.sep}`) ||
+          path.isAbsolute(relativePath)
+        ) {
+          throw new Error("Invalid song file path.");
+        }
+        await fs.promises.stat(audioPath);
 
-    })
-  
-    socket.on('disconnect', () => {
-      console.log('User disconnected');
+        const state = {
+          record: typeof record.toObject === "function" ? record.toObject() : record,
+          songId: String(record._id),
+          position: 0,
+          startedAt: Date.now(),
+          paused: false,
+        };
+        roomPlayback.set(roomId, state);
+        io.to(roomId).emit("metaData", state.record);
+        emitPlaybackState(io.to(roomId), roomId, state);
+      } catch (error) {
+        io.to(roomId).emit("playback:error", { message: "Unable to play this song." });
+      }
+    });
+
+    socket.on("resume play", (data) => {
+      const roomId = getRoomId(data?.roomId);
+      if (!roomId) return;
+      const state = roomPlayback.get(roomId);
+      if (state?.paused) {
+        state.paused = false;
+        state.startedAt = Date.now();
+      }
+      io.to(roomId).emit("resume play");
+      if (state) emitPlaybackState(io.to(roomId), roomId, state);
+    });
+
+    socket.on("pause play", (data) => {
+      const roomId = getRoomId(data?.roomId);
+      if (!roomId) return;
+      const state = roomPlayback.get(roomId);
+      if (state && !state.paused) {
+        state.position = getPosition(state);
+        state.paused = true;
+      }
+      io.to(roomId).emit("pause play");
+      if (state) emitPlaybackState(io.to(roomId), roomId, state);
+    });
+
+    socket.on("play next", (data) => {
+      const roomId = getRoomId(data?.roomId);
+      if (roomId) io.to(roomId).emit("next play this", data);
+    });
+
+    socket.on("play previous one", (data) => {
+      const roomId = getRoomId(data?.roomId);
+      if (roomId) io.to(roomId).emit("previous play this", data);
+    });
+
+    socket.on("seek", (data) => {
+      const roomId = getRoomId(data?.roomId);
+      if (!roomId) return;
+      const state = roomPlayback.get(roomId);
+      const position = Number(data?.timeJump);
+      if (state && Number.isFinite(position) && position >= 0) {
+        state.position = Number.isFinite(Number(state.record.duration))
+          ? Math.min(position, Number(state.record.duration))
+          : position;
+        state.startedAt = Date.now();
+      }
+      io.to(roomId).emit("song seeking", { ...data, timeJump: position });
+      if (state) emitPlaybackState(io.to(roomId), roomId, state);
     });
   });
 
-}
+  return io;
+};

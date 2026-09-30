@@ -1,15 +1,14 @@
 const express = require("express");
-var app = express.Router();
 const Joi = require("joi");
 const jwt = require("jsonwebtoken");
 const cors = require("cors");
-app.use(cors());
 
 const UserDetails = require("../../models/userDetails");
 
 const { encrypt, decrypt } = require("../../library/encryption");
 
 const LoginRoutes = express.Router();
+LoginRoutes.use(cors());
 
 LoginRoutes.post("/login/user", async (req, res) => {
   console.log("/login/user/login/user")

@@ -177,94 +177,94 @@ app.get("/", async function (req, res, next) {
 });
 //!selected music file should be sent to the front end
 app.get("/get/selected/music/file", async function (req, res, next) {
-  // const body = decrypt(req.body);
-  // req.body = decrypt(req);
-  
-  console.log("API is -/get/selected/music/file ",req.query.s_id);
   try {
-    
     const record = await songsDetails.findOne({ _id: req.query.s_id });
-    console.log(record,'this is the record of the selected song')
-    // readStream=fs.createReadStream(currenDir + `${record.s_path}.mp3`)
-
-    let recentlyPlayed = [];
-
-    // Fetch the user details (use findOne for a single result)
-    const user = await UserDetails.findOne({ user_id: req.query.user_ID });
-    
-    console.log(user, "This is the user data");
-    
-    // Ensure recentlyPlayedList is always an array (use fallback if not present)
-    recentlyPlayed = user?.recentlyPlayedList || [];
-    
-    // Modify the recentlyPlayedList based on its length
-    if (recentlyPlayed.length > 10) {
-      recentlyPlayed.shift(); // Remove the first item if list exceeds 10
+    if (!record?.s_path) {
+      return res.status(404).json({ error: "Song not found" });
     }
-    if(!recentlyPlayed.includes(req.query.s_id))
-    {
-      recentlyPlayed.push(req.query.s_id); // Add the new song ID to the list
-    }
-    
-    console.log(recentlyPlayed, "Updated recentlyPlayed list");
-    
-    // Update the user's recentlyPlayedList (upsert if document does not exist)
-    const updateResult = await UserDetails.updateOne(
-      { user_id: req.query.user_ID }, // Filter by user_id
-      { $set: { recentlyPlayedList: recentlyPlayed } },
-      { upsert: true } // Insert a new document if no matching document is found
-    );
-    
-    // Log the result of the update operation
-    console.log(updateResult, "Update result");
-    
-    // Fetch the updated user details to verify the change
-    const details = await UserDetails.findOne({ user_id: req.query.user_ID });
-    console.log(details, "Details after the update");
 
-
-
-    if (record) {
-      console.log("Streaming audio request received.");
-      const audioPath = currenDir + `${record.s_path}`; // Change the file name and path accordingly
-      const stat = fs.statSync(audioPath);
-      const fileSize = stat.size;
-      const range = req.headers.range;
-
-      if (range) {
-        const parts = range.replace(/bytes=/, "").split("-");
-        const start = parseInt(parts[0], 10);
-        const end = parts[1] ? parseInt(parts[1], 10) : fileSize - 1;
-
-        // const chunksize = (end - start) + 1;
-        const chunksize = 10 ** 5;
-        const file = fs.createReadStream(audioPath, { start, end });
-        const head = {
-          "Content-Range": `bytes ${start}-${end}/${fileSize}`,
-          "Accept-Ranges": "bytes",
-          "Content-Length": chunksize,
-          "Content-Type": "audio/mpeg", // Change the content type according to your audio file format
-        };
-
-        console.log(`Streaming audio chunk from byte ${start} to ${end}.`);
-        res.writeHead(206, head);
-        file.pipe(res);
-      } else {
-        const head = {
-          "Content-Length": fileSize,
-          "Content-Type": "audio/mpeg", // Change the content type according to your audio file format
-        };
-        console.log("Streaming full audio.");
-        res.writeHead(200, head);
-        fs.createReadStream(audioPath).pipe(res);
+    if (req.query.user_ID) {
+      const user = await UserDetails.findOne({ user_id: req.query.user_ID });
+      const recentlyPlayed = Array.isArray(user?.recentlyPlayedList)
+        ? user.recentlyPlayedList
+        : [];
+      if (!recentlyPlayed.includes(req.query.s_id)) {
+        recentlyPlayed.push(req.query.s_id);
+        if (recentlyPlayed.length > 10) recentlyPlayed.shift();
       }
-    } else {
-      console.log("Error while fetching");
-      throw new Error("error while fetching the song");
+      await UserDetails.updateOne(
+        { user_id: req.query.user_ID },
+        { $set: { recentlyPlayedList: recentlyPlayed } },
+        { upsert: true }
+      );
     }
+
+    const audioPath = path.resolve(currenDir, record.s_path);
+    const relativePath = path.relative(currenDir, audioPath);
+    if (
+      relativePath === ".." ||
+      relativePath.startsWith(`..${path.sep}`) ||
+      path.isAbsolute(relativePath)
+    ) {
+      return res.status(400).json({ error: "Invalid song path" });
+    }
+
+    const { size: fileSize } = await fs.promises.stat(audioPath);
+    let start = 0;
+    let end = fileSize - 1;
+    let statusCode = 200;
+    const range = req.headers.range;
+
+    if (range) {
+      const match = /^bytes=(\d*)-(\d*)$/.exec(range);
+      if (!match || (!match[1] && !match[2])) {
+        return res.status(416).set("Content-Range", `bytes */${fileSize}`).end();
+      }
+
+      if (!match[1]) {
+        const suffixLength = Number(match[2]);
+        if (!Number.isSafeInteger(suffixLength) || suffixLength <= 0) {
+          return res.status(416).set("Content-Range", `bytes */${fileSize}`).end();
+        }
+        start = Math.max(fileSize - suffixLength, 0);
+      } else {
+        start = Number(match[1]);
+        if (match[2]) end = Number(match[2]);
+      }
+
+      if (
+        !Number.isSafeInteger(start) ||
+        !Number.isSafeInteger(end) ||
+        start >= fileSize ||
+        end < start
+      ) {
+        return res.status(416).set("Content-Range", `bytes */${fileSize}`).end();
+      }
+      end = Math.min(end, fileSize - 1);
+      statusCode = 206;
+    }
+
+    const headers = {
+      "Accept-Ranges": "bytes",
+      "Content-Length": end - start + 1,
+      "Content-Type": "audio/mpeg",
+    };
+    if (statusCode === 206) {
+      headers["Content-Range"] = `bytes ${start}-${end}/${fileSize}`;
+    }
+
+    const file = fs.createReadStream(audioPath, { start, end });
+    file.on("error", (error) => {
+      console.error("Audio stream failed:", error);
+      if (res.headersSent) res.destroy(error);
+      else res.status(404).json({ error: "Song file not found" });
+    });
+    res.status(statusCode).set(headers);
+    file.pipe(res);
   } catch (error) {
     console.error(error);
-    return res.status(500).json({ error: "Internal server error" });
+    if (!res.headersSent) return res.status(500).json({ error: "Internal server error" });
+    res.destroy(error);
   }
 });
 
@@ -278,6 +278,8 @@ app.post(
     const uploadSchema = Joi.object({
       shuffle: Joi.boolean().allow(null),
       searchKey: Joi.string().allow(null),
+      limit: Joi.number().allow(null),
+      skip: Joi.number().allow(null),
       // user_ID:Joi.string().required()
     });
     console.log(req.body, "this is the body in the search");
@@ -294,7 +296,7 @@ app.post(
         (req.body.searchKey && !req.body.searchKey.length)
       ) {
         songData = await songsDetails.find({})
-        // .skip(10).limit(5);
+        .skip(req.body.skip).limit(req.body.limit);
         
       }
       if (req.body.searchKey && req.body.searchKey.length) {
@@ -351,7 +353,7 @@ app.post("/get/user/profile/details", async function (req, res, next) {
   try {
     await UserDetails.find(
       { user_id: req.body.userID },
-      "username status p_pic_path phone_no mail_id gender p_pic_path"
+      "username status p_pic_path phone_no mail_id gender p_pic_path recentlyPlayedList"
     ).then((response) => {
       console.log(response, "this is the user data");
       userData["data"] = response;
