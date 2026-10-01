@@ -7,9 +7,8 @@ var router = express.Router();
 const HOST = '0.0.0.0'
 require("dotenv").config();
 const index = require("./index");
-const  connections = require("./db");
+const database = require("./db");
 const socketEvents = require("./sockets.js");
-connections.db();
 const PORT = process.env.PORT || 3000;
 const server = http.createServer(app);
 app.use(bodyParser.json());
@@ -34,9 +33,14 @@ app.post("/post/posting", async function (req, res, next) {
 
   res.send(req.body);
 });
-server.listen(PORT, HOST, (req, res) => {
-  console.log("server started at", `${PORT}`);
-})
+database.initialize().then(() => {
+  server.listen(PORT, HOST, () => {
+    console.log("server started at", `${PORT}`);
+  });
+}).catch((error) => {
+  console.error("Unable to initialize PostgreSQL:", error.message);
+  process.exitCode = 1;
+});
 
 //!NOTE ALL THE API CALLS ARE SHIFTING TO THIS FILE FOR THE TIME BEING
 //! API CALLS STARTS

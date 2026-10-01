@@ -1,9 +1,8 @@
 var express = require("express");
 var app = express.Router();
 const multer = require("multer");
-const UserDetails = require("../models/userDetails");
-const playList = require("../models/playList");
-const songsDetails = require("../models/songs");
+const crypto = require("crypto");
+const { sql } = require("../db");
 const Joi = require("joi");
 // const ytdl = require("ytdl-core");
 const ytdl = require('@distube/ytdl-core');
@@ -12,6 +11,7 @@ const path = require("path");
 const cors = require("cors");
 app.use(cors());
 const { encrypt, decrypt } = require("../library/encryption");
+const resolveSongFile = require("../library/resolve-song-file");
 const currenDir = path.join(__dirname, "../musicFiles/");
 const reqDirForProfilePics = path.join(__dirname, "../profilePics/");
 
@@ -158,7 +158,7 @@ app.post("/insert/newSong/byUrl", async (req, res) => {
     const name=req.body.path
     const savePath = path.join(currenDir, `${name.replace(/ /g, '_')}.mp3`);
     console.log(savePath, "This is the path where the file will be stored");
-      storeDataInDb(metaData, name, req); 
+      await storeDataInDb(metaData, name, req);
 
       res.send({ message: "Audio file saved successfully", success: true ,name:savePath});
 
@@ -178,38 +178,35 @@ app.get("/", async function (req, res, next) {
 //!selected music file should be sent to the front end
 app.get("/get/selected/music/file", async function (req, res, next) {
   try {
-    const record = await songsDetails.findOne({ _id: req.query.s_id });
+    const [record] = await sql`
+      SELECT id AS "_id", s_path, s_pic_path, i_tag, duration,
+             video_id AS "videoId", display_name AS "s_displayName",
+             image_url, artist, language
+      FROM songs WHERE id = ${req.query.s_id}
+      LIMIT 1
+    `;
     if (!record?.s_path) {
       return res.status(404).json({ error: "Song not found" });
     }
 
     if (req.query.user_ID) {
-      const user = await UserDetails.findOne({ user_id: req.query.user_ID });
-      const recentlyPlayed = Array.isArray(user?.recentlyPlayedList)
-        ? user.recentlyPlayedList
+      const [user] = await sql`
+        SELECT recently_played_list FROM users WHERE user_id = ${req.query.user_ID}
+      `;
+      const recentlyPlayed = Array.isArray(user?.recently_played_list)
+        ? user.recently_played_list
         : [];
       if (!recentlyPlayed.includes(req.query.s_id)) {
         recentlyPlayed.push(req.query.s_id);
         if (recentlyPlayed.length > 10) recentlyPlayed.shift();
       }
-      await UserDetails.updateOne(
-        { user_id: req.query.user_ID },
-        { $set: { recentlyPlayedList: recentlyPlayed } },
-        { upsert: true }
-      );
+      await sql`
+        UPDATE users SET recently_played_list = ${sql.json(recentlyPlayed)}, updated_at = NOW()
+        WHERE user_id = ${req.query.user_ID}
+      `;
     }
 
-    const audioPath = path.resolve(currenDir, record.s_path);
-    const relativePath = path.relative(currenDir, audioPath);
-    if (
-      relativePath === ".." ||
-      relativePath.startsWith(`..${path.sep}`) ||
-      path.isAbsolute(relativePath)
-    ) {
-      return res.status(400).json({ error: "Invalid song path" });
-    }
-
-    const { size: fileSize } = await fs.promises.stat(audioPath);
+    const { audioPath, size: fileSize } = await resolveSongFile(currenDir, record.s_path);
     let start = 0;
     let end = fileSize - 1;
     let statusCode = 200;
@@ -247,7 +244,9 @@ app.get("/get/selected/music/file", async function (req, res, next) {
     const headers = {
       "Accept-Ranges": "bytes",
       "Content-Length": end - start + 1,
-      "Content-Type": "audio/mpeg",
+      "Content-Type": audioPath.toLowerCase().endsWith(".m4a")
+        ? "audio/mp4"
+        : "audio/mpeg",
     };
     if (statusCode === 206) {
       headers["Content-Range"] = `bytes ${start}-${end}/${fileSize}`;
@@ -291,21 +290,29 @@ app.post(
     let results;
     try {
       let songData;
+      const limit = Math.min(Math.max(Number(req.body.limit) || 100, 1), 500);
+      const skip = Math.max(Number(req.body.skip) || 0, 0);
       if (
         !req.body.searchKey ||
         (req.body.searchKey && !req.body.searchKey.length)
       ) {
-        songData = await songsDetails.find({})
-        .skip(req.body.skip).limit(req.body.limit);
-        
+        songData = await sql`
+          SELECT id AS "_id", s_path, s_pic_path, i_tag, duration,
+                 video_id AS "videoId", display_name AS "s_displayName",
+                 image_url, artist, language
+          FROM songs ORDER BY id LIMIT ${limit} OFFSET ${skip}
+        `;
       }
       if (req.body.searchKey && req.body.searchKey.length) {
-        songData = await songsDetails.find({
-          $or: [
-            { s_displayName: { $regex: new RegExp(req.body.searchKey, "i") } },
-            { artist: { $regex: new RegExp(req.body.searchKey, "i") } },
-          ],
-        });
+        const searchKey = `%${req.body.searchKey}%`;
+        songData = await sql`
+          SELECT id AS "_id", s_path, s_pic_path, i_tag, duration,
+                 video_id AS "videoId", display_name AS "s_displayName",
+                 image_url, artist, language
+          FROM songs
+          WHERE display_name ILIKE ${searchKey} OR artist ILIKE ${searchKey}
+          ORDER BY id LIMIT ${limit} OFFSET ${skip}
+        `;
         console.log(results, "this is the result required");
       }
       if (req.body.shuffle) {
@@ -347,37 +354,18 @@ app.post("/get/user/profile/details", async function (req, res, next) {
       error: "JOI validation error while fetching user profile details",
     });
   }
-  let blobData;
   let userData = {};
-  let fileData
   try {
-    await UserDetails.find(
-      { user_id: req.body.userID },
-      "username status p_pic_path phone_no mail_id gender p_pic_path recentlyPlayedList"
-    ).then((response) => {
-      console.log(response, "this is the user data");
-      userData["data"] = response;
-      if (response[0]?.p_pic_path) {
-
-        if (fs.existsSync(response[0]?.p_pic_path)) {
-        let fileData = fs.readFileSync(response[0].p_pic_path);
-        // const data = fs.readFileSync(filePath, 'utf8');
-          blobData = Buffer.from(fileData).toString("base64");
-
-          userData["profilePic"] = blobData;
-        } else {
-          console.log('File not found at the specified path!');
-        }
-
-
-        // const fileData = fs.readFileSync(response[0].p_pic_path);
- 
-        //  blobData=new Blob([data])
-        // blobData = Buffer.from(fileData).toString("base64");
-
-        // userData["profilePic"] = blobData;
-      }
-    });
+    const response = await sql`
+      SELECT user_id, username, status, p_pic_path, phone_no, mail_id, gender,
+             recently_played_list AS "recentlyPlayedList"
+      FROM users WHERE user_id = ${req.body.userID}
+    `;
+    userData.data = response;
+    if (response[0]?.p_pic_path && fs.existsSync(response[0].p_pic_path)) {
+      const profileImage = fs.readFileSync(response[0].p_pic_path);
+      userData.profilePic = Buffer.from(profileImage).toString("base64");
+    }
 
     // console.log(userData, "this is the user data");
 
@@ -421,18 +409,16 @@ app.post(
         savePath = reqDirForProfilePics + `${req.file.filename}`.trim();
       }
       console.log(__dirname, "this is the current directory");
-      await UserDetails.updateOne(
-        { user_id: req.body.userID }, // Filter
-        {
-          $set: {
-            username: req.body?.username,
-            gender: req.body?.gender,
-            mail_id: req.body?.email,
-            phone_no: req.body?.contact,
-            p_pic_path: savePath,
-          },
-        }
-      );
+      await sql`
+        UPDATE users SET
+          username = COALESCE(${req.body?.username ?? null}, username),
+          gender = COALESCE(${req.body?.gender ?? null}, gender),
+          mail_id = COALESCE(${req.body?.email ?? null}, mail_id),
+          phone_no = COALESCE(${req.body?.contact ?? null}, phone_no),
+          p_pic_path = COALESCE(${savePath ?? null}, p_pic_path),
+          updated_at = NOW()
+        WHERE user_id = ${req.body.userID}
+      `;
 
       result.success = true;
       result.error = false;
@@ -469,28 +455,19 @@ app.post("/create/playlist", async (req, res, next) => {
       );
     }
 
-    //todo try to write a transaction here
-    const insertedPlayListDetails = await playList.create({
-      p_name: req.body.playListName,
-      songs: [],
+    const playlistId = crypto.randomBytes(12).toString("hex");
+    await sql.begin(async (transaction) => {
+      await transaction`
+        INSERT INTO playlists (id, p_name)
+        VALUES (${playlistId}, ${req.body.playListName})
+      `;
+      await transaction`
+        INSERT INTO user_playlists (user_id, playlist_id, playlist_name, position)
+        SELECT ${req.body.user_id}, ${playlistId}, ${req.body.playListName},
+               COALESCE(MAX(position) + 1, 0)
+        FROM user_playlists WHERE user_id = ${req.body.user_id}
+      `;
     });
-    console.log(
-      insertedPlayListDetails._id,
-      "this is the acknowledgement from song insertion"
-    );
-    if (insertedPlayListDetails._id) {
-      await UserDetails.updateOne(
-        { user_id: req.body.user_id }, // Filter
-        {
-          $push: {
-            playlist: {
-              p_id: insertedPlayListDetails._id,
-              playListName: req.body.playListName,
-            },
-          },
-        } // Update data
-      );
-    }
     //map this playlist id to the respective user
     result.success = true;
     result.error = false;
@@ -526,38 +503,20 @@ app.post("/fetch/playlist", async (req, res, next) => {
     }
 
     //todo try to write a transaction here
-    const userRecord = await UserDetails.findOne({ user_id: req.body.user_id });
-    console.log(userRecord.playlist, "this is the user record");
-    const promises = [];
-    const promiseTwo = [];
-    if (userRecord?.playlist?.length) {
-      for (let record of userRecord.playlist) {
-        promises.push(playList.findOne({ _id: record.p_id }));
-      }
-      const promiseResponse = await Promise.all(promises);
-      console.log(promiseResponse, "this is the first promise response");
-      for (let item of promiseResponse) {
-        promiseTwo.push(songsDetails.findOne({ _id: item.songs[0] }));
-      }
-      const finalPromiseResponse = await Promise.all(promiseTwo);
-      console.log(finalPromiseResponse, "this is the final promise response");
-
-      userRecord.playlist.forEach((playlist, index) => {
-        console.log(playlist, index);
-        if (finalPromiseResponse[index]) {
-          console.log("into the if conditoin");
-
-          playlist["s_pic_path"] = finalPromiseResponse[index].s_pic_path; // Assuming initial value of 0 for number of songs
-        }
-      });
-    }
-
-    console.log(
-      userRecord.playlist,
-      "this is the user record respective playlist"
-    );
-    //map this playlist id to the respective user
-    result.data = userRecord.playlist;
+    result.data = await sql`
+      SELECT up.playlist_id AS p_id,
+             up.playlist_name AS "playListName",
+             (
+               SELECT s.s_pic_path
+               FROM playlist_songs ps
+               JOIN songs s ON s.id = ps.song_id
+               WHERE ps.playlist_id = up.playlist_id
+               ORDER BY ps.position LIMIT 1
+             ) AS s_pic_path
+      FROM user_playlists up
+      WHERE up.user_id = ${req.body.user_id}
+      ORDER BY up.position
+    `;
     result.success = true;
     result.error = false;
     result.message = "Successfully fetched";
@@ -592,29 +551,15 @@ app.post("/fetch/playlist/linked/songs", async (req, res, next) => {
     }
 
     //todo try to write a transaction here
-    const playListLinedSongsList = await playList.findOne({
-      _id: req.body.playListId,
-    });
-    console.log(
-      playListLinedSongsList,
-      "this is the playList linked songs record"
-    );
-
-    let songsOfPlayList = [];
-    const promises = [];
-    for (let index in playListLinedSongsList.songs) {
-      promises.push(
-        songsDetails.findOne({ _id: playListLinedSongsList.songs[index] })
-      );
-    }
-    const songResponses = await Promise.all(promises);
-    for (const songResponse of songResponses) {
-      console.log(
-        songResponse,
-        "***********************************************"
-      );
-      songsOfPlayList.push(songResponse);
-    }
+    const songsOfPlayList = await sql`
+      SELECT s.id AS "_id", s.s_path, s.s_pic_path, s.i_tag, s.duration,
+             s.video_id AS "videoId", s.display_name AS "s_displayName",
+             s.image_url, s.artist, s.language
+      FROM playlist_songs ps
+      JOIN songs s ON s.id = ps.song_id
+      WHERE ps.playlist_id = ${req.body.playListId}
+      ORDER BY ps.position
+    `;
 
     //map this playlist id to the respective user
     result.data = songsOfPlayList;
@@ -653,25 +598,21 @@ app.post("/insert/song/playlist", async (req, res, next) => {
     }
 
     //todo try to write a transaction here
-    const playListRecords = await playList.findOne({
-      _id: req.body.playListId,
-    });
-    console.log(playListRecords, "playListRecords playListRecords");
-    for (let item of playListRecords.songs) {
-      if (item === req.body.songId) {
-        console.log("yes existed");
-        return res.send(
-          encrypt({ message: "song already existed in this playlist" })
-        );
-      }
+    const [existingSong] = await sql`
+      SELECT song_id FROM playlist_songs
+      WHERE playlist_id = ${req.body.playListId} AND song_id = ${req.body.songId}
+    `;
+    if (existingSong) {
+      return res.send(encrypt({ message: "song already existed in this playlist" }));
     }
-
-    const playListLinedSongsList = await playList.updateOne(
-      { _id: req.body.playListId },
-      {
-        $push: { songs: req.body.songId },
-      }
-    );
+    await sql.begin(async (transaction) => {
+      await transaction`
+        INSERT INTO playlist_songs (playlist_id, song_id, position)
+        SELECT ${req.body.playListId}, ${req.body.songId},
+               COALESCE(MAX(position) + 1, 0)
+        FROM playlist_songs WHERE playlist_id = ${req.body.playListId}
+      `;
+    });
     result.success = true;
     result.error = false;
     result.message = "Successfully fetched";
@@ -691,18 +632,17 @@ app.post("/insert/song/playlist", async (req, res, next) => {
 async function storeDataInDb(metaData, filePath, req) {
   console.log("this is to store the data in the data base");
   try {
-    const insertedSongData = await songsDetails.create({
-      s_path: `${filePath}.mp3`, //the file path would be the file name in the dat while retriving that we need to add current directory as prefix
-      s_dis_name: metaData.title,
-      i_tag: metaData.iframeUrl,
-      s_pic_path: metaData.thumbnail,
-      duration: metaData.length,
-      videoId: metaData.videoId,
-      s_displayName: req.body.displayName,
-      image_url: req.body?.imageUrl,
-      artist: req.body?.artist,
-      language:req.body.lang
-    });
+    await sql`
+      INSERT INTO songs (
+        id, s_path, s_pic_path, i_tag, duration, video_id,
+        display_name, image_url, artist, language
+      ) VALUES (
+        ${crypto.randomBytes(12).toString("hex")}, ${filePath}.mp3,
+        ${metaData.thumbnail}, ${metaData.iframeUrl}, ${Number(metaData.length)},
+        ${metaData.videoId}, ${req.body.displayName}, ${req.body?.imageUrl ?? null},
+        ${req.body?.artist ?? null}, ${req.body.lang}
+      )
+    `;
     console.log("data inserted successfully");
   } catch (err) {
     console.log("failed to insert song data in to the db");

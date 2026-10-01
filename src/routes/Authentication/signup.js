@@ -2,9 +2,9 @@ const express = require("express");
 const Joi = require("joi");
 const { nanoid } = require("nanoid");
 const moment = require("moment");
-
-const UserDetails = require("../../models/userDetails");
-const Otp = require("../../models/otp");
+const crypto = require("crypto");
+const bcrypt = require("bcryptjs");
+const { sql } = require("../../db");
 
 const { generateOtp } = require("../../library/otp-generate");
 const sendMails = require("../../library/mail");
@@ -30,7 +30,12 @@ SignupRoutes.post("/signup/user", async (req, res) => {
     }
 
     console.log(body);
-    const user = await UserDetails.findOne({ mail_id: body.mail_id });
+    const [user] = await sql`
+      SELECT user_id, status
+      FROM users
+      WHERE LOWER(mail_id) = LOWER(${body.mail_id})
+      LIMIT 1
+    `;
     if (user && user.status === 0) {
       const response = {
         success: true,
@@ -50,41 +55,29 @@ SignupRoutes.post("/signup/user", async (req, res) => {
       return res.json(encrypt(response));
     }
 
-    let user_id = "";
-    let uniqueId = null;
-    while (!user_id || uniqueId) {
-      user_id = nanoid(10);
-      uniqueId = await UserDetails.findOne({ user_id });
-    }
-
-    const newUser = new UserDetails({
-      user_id,
-      mail_id: body.mail_id,
-      password: body.password,
-      username: body.username,
-      gender: body.gender,
-      phone_no: body.phone_no,
-      status: 0,
-    });
+    const user_id = nanoid(10);
+    const passwordHash = await bcrypt.hash(body.password, 10);
 
     const otp = generateOtp();
-    const newOtp = new Otp({
-      mail_id: body.mail_id,
-      otp,
-      expiry: moment().add(10, "minutes").format("YYYY-MM-DD HH:mm:ss"),
-      status: 1,
-      created_at: moment().format("YYYY-MM-DD HH:mm:ss"),
-      updated_at: moment().format("YYYY-MM-DD HH:mm:ss"),
-    });
-    await Otp.deleteMany({ mail_id: body.mail_id, status: { $ne: 2 } });
+    const now = moment().format("YYYY-MM-DD HH:mm:ss");
+    const expiresAt = moment().add(10, "minutes").format("YYYY-MM-DD HH:mm:ss");
     const mailData = {
       receiver: body.mail_id,
       subject: "Sign up Verification",
       content: otp + " is your Otp.",
     };
+    await sql.begin(async (transaction) => {
+      await transaction`DELETE FROM otps WHERE mail_id = ${body.mail_id} AND status <> 2`;
+      await transaction`
+        INSERT INTO users (user_id, mail_id, password_hash, username, gender, phone_no, status)
+        VALUES (${user_id}, ${body.mail_id}, ${passwordHash}, ${body.username}, ${body.gender}, ${body.phone_no}, 0)
+      `;
+      await transaction`
+        INSERT INTO otps (id, mail_id, otp, expiry, status, created_at, updated_at)
+        VALUES (${crypto.randomBytes(12).toString("hex")}, ${body.mail_id}, ${otp}, ${expiresAt}, 1, ${now}, ${now})
+      `;
+    });
     await sendMails(mailData);
-    await newOtp.save();
-    await newUser.save();
     const response = {
       success: true,
       error: false,
@@ -109,12 +102,16 @@ SignupRoutes.post("/signup/verify/otp", async (req, res) => {
     if (error) {
       console.log(error);
     }
-    const user = await UserDetails.findOne({
-      mail_id: body.mail_id,
-      status: 1,
-    });
-
-    const userOtp = await Otp.findOne({ mail_id: body.mail_id, status: 1 });
+    const [user] = await sql`
+      SELECT user_id FROM users
+      WHERE LOWER(mail_id) = LOWER(${body.mail_id}) AND status = 1
+      LIMIT 1
+    `;
+    const [userOtp] = await sql`
+      SELECT otp, expiry, status FROM otps
+      WHERE LOWER(mail_id) = LOWER(${body.mail_id}) AND status = 1
+      ORDER BY created_at DESC LIMIT 1
+    `;
     if (!userOtp && !user) {
       const response = {
         success: true,
@@ -172,22 +169,17 @@ SignupRoutes.post("/signup/verify/otp", async (req, res) => {
     //   return res.json(encrypt(response));
     // }
     else {
-      await UserDetails.updateOne(
-        { mail_id: body.mail_id },
-        { $set: { status: 1 } }
-      );
-      await Otp.updateOne(
-        {
-          mail_id: body.mail_id,
-          status: 1,
-        },
-        {
-          $set: {
-            updated_at: moment().format("YYYY-MM-DD HH:mm:ss"),
-            status: 2,
-          },
-        }
-      );
+      const updatedAt = moment().format("YYYY-MM-DD HH:mm:ss");
+      await sql.begin(async (transaction) => {
+        await transaction`
+          UPDATE users SET status = 1, updated_at = NOW()
+          WHERE LOWER(mail_id) = LOWER(${body.mail_id})
+        `;
+        await transaction`
+          UPDATE otps SET updated_at = ${updatedAt}, status = 2
+          WHERE LOWER(mail_id) = LOWER(${body.mail_id}) AND status = 1
+        `;
+      });
       const mailData = {
         receiver: body.mail_id,
         subject: "Account Verified",
@@ -219,7 +211,11 @@ SignupRoutes.post("/check/mail/exists", async (req, res) => {
       const response = error.details[0];
       return res.json(encrypt(response));
     }
-    const user = await UserDetails.findOne({ mail_id: body.mail_id });
+    const [user] = await sql`
+      SELECT user_id, status FROM users
+      WHERE LOWER(mail_id) = LOWER(${body.mail_id})
+      LIMIT 1
+    `;
     if (user && user.status === 1) {
       const response = {
         success: true,
@@ -231,22 +227,21 @@ SignupRoutes.post("/check/mail/exists", async (req, res) => {
     }
     if (user && user.status === 0) {
       const otp = generateOtp();
-      const newOtp = new Otp({
-        mail_id: body.mail_id,
-        otp,
-        expiry: moment().add(10, "minutes").format("YYYY-MM-DD HH:mm:ss"),
-        status: 1,
-        created_at: moment().format("YYYY-MM-DD HH:mm:ss"),
-        updated_at: moment().format("YYYY-MM-DD HH:mm:ss"),
-      });
-      await Otp.deleteMany({ mail_id: body.mail_id, status: { $ne: 2 } });
+      const now = moment().format("YYYY-MM-DD HH:mm:ss");
+      const expiresAt = moment().add(10, "minutes").format("YYYY-MM-DD HH:mm:ss");
       const mailData = {
         receiver: body.mail_id,
         subject: "Sign up Verification",
         content: otp + " is your OTP for verification.",
       };
+      await sql.begin(async (transaction) => {
+        await transaction`DELETE FROM otps WHERE LOWER(mail_id) = LOWER(${body.mail_id}) AND status <> 2`;
+        await transaction`
+          INSERT INTO otps (id, mail_id, otp, expiry, status, created_at, updated_at)
+          VALUES (${crypto.randomBytes(12).toString("hex")}, ${body.mail_id}, ${otp}, ${expiresAt}, 1, ${now}, ${now})
+        `;
+      });
       await sendMails(mailData);
-      await newOtp.save();
       const response = {
         success: true,
         message: "Verify your account.",
@@ -281,9 +276,11 @@ SignupRoutes.post("/resend/otp", async (req, res) => {
       return res.json(encrypt(response));
     }
 
-    const user = await UserDetails.findOne({
-      mail_id: body.mail_id,
-    });
+    const [user] = await sql`
+      SELECT user_id FROM users
+      WHERE LOWER(mail_id) = LOWER(${body.mail_id})
+      LIMIT 1
+    `;
     console.log(user, body.mail_id);
     if (!user) {
       const response = {
@@ -296,22 +293,21 @@ SignupRoutes.post("/resend/otp", async (req, res) => {
     }
 
     const otp = generateOtp();
-    const newOtp = new Otp({
-      mail_id: body.mail_id,
-      otp,
-      expiry: moment().add(10, "minutes").format("YYYY-MM-DD HH:mm:ss"),
-      status: 1,
-      created_at: moment().format("YYYY-MM-DD HH:mm:ss"),
-      updated_at: moment().format("YYYY-MM-DD HH:mm:ss"),
-    });
-    await Otp.deleteMany({ mail_id: body.mail_id, status: { $ne: 2 } });
+    const now = moment().format("YYYY-MM-DD HH:mm:ss");
+    const expiresAt = moment().add(10, "minutes").format("YYYY-MM-DD HH:mm:ss");
     const mailData = {
       receiver: body.mail_id,
       subject: "Sign up Verification",
       content: otp + " is your OTP for verification.",
     };
+    await sql.begin(async (transaction) => {
+      await transaction`DELETE FROM otps WHERE LOWER(mail_id) = LOWER(${body.mail_id}) AND status <> 2`;
+      await transaction`
+        INSERT INTO otps (id, mail_id, otp, expiry, status, created_at, updated_at)
+        VALUES (${crypto.randomBytes(12).toString("hex")}, ${body.mail_id}, ${otp}, ${expiresAt}, 1, ${now}, ${now})
+      `;
+    });
     await sendMails(mailData);
-    await newOtp.save();
     const response = {
       success: true,
       error: false,
@@ -337,10 +333,11 @@ SignupRoutes.post("/change/password", async (req, res) => {
       const response = error.details[0];
       return res.json(encrypt(response));
     }
-    await UserDetails.updateOne(
-      { mail_id: body.mail_id },
-      { $set: { password: body.password } }
-    );
+    const passwordHash = await bcrypt.hash(body.password, 10);
+    await sql`
+      UPDATE users SET password_hash = ${passwordHash}, updated_at = NOW()
+      WHERE LOWER(mail_id) = LOWER(${body.mail_id})
+    `;
     const response = {
       success: true,
       error: false,

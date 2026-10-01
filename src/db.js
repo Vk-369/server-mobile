@@ -1,23 +1,30 @@
 
 require("dotenv").config();
-const mongoose = require("mongoose");
+const fs = require("fs");
+const path = require("path");
+const postgres = require("postgres");
 
-// const DB_PORT = process.env.DB_PORT
-// const DB_HOST = process.env.DB_HOST
-// const DB_NAME = process.env.DB_NAME
-const URL = process.env.DB;
+if (!process.env.DB) {
+  throw new Error("DB must contain the PostgreSQL connection URL.");
+}
 
-const db = async () => {
-    // console.log('test', URL)
-  try {
-    // 
-    await mongoose.connect('mongodb://127.0.0.1:27017/test', {directConnection: true, });
-    // await mongoose.connect('mongodb+srv://adminone:admin@cluster0.bx1it.mongodb.net/test?retryWrites=true&w=majority&appName=Cluster0');
-    // mongodb+srv://<db_username>:<db_password>@cluster0.bx1it.mongodb.net/
-    
-    console.log("connection established");
-  } catch (err) {
-    console.log(err, "error while connecting to the db");
+const sql = postgres(process.env.DB, {
+  max: Number(process.env.DB_POOL_MAX) || 10,
+  idle_timeout: 20,
+  connect_timeout: 10,
+});
+
+const initialize = async () => {
+  const schemaPath = path.join(__dirname, "../migrations/001_initial_postgres_schema.sql");
+  const statements = fs.readFileSync(schemaPath, "utf8").split(";");
+
+  for (const statement of statements) {
+    if (statement.trim()) await sql.unsafe(statement);
   }
+
+  await sql.unsafe("SELECT 1");
+  console.log("PostgreSQL connection established");
 };
-module.exports.db = db;
+
+module.exports = { sql, initialize };
+ 

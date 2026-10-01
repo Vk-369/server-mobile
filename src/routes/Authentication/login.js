@@ -2,8 +2,8 @@ const express = require("express");
 const Joi = require("joi");
 const jwt = require("jsonwebtoken");
 const cors = require("cors");
-
-const UserDetails = require("../../models/userDetails");
+const bcrypt = require("bcryptjs");
+const { sql } = require("../../db");
 
 const { encrypt, decrypt } = require("../../library/encryption");
 
@@ -27,7 +27,12 @@ LoginRoutes.post("/login/user", async (req, res) => {
       const response = error.details[0];
       return res.json(encrypt(response));
     }
-    const user = await UserDetails.findOne({ mail_id: body.mail_id });
+    const [user] = await sql`
+      SELECT user_id, mail_id, password_hash, status
+      FROM users
+      WHERE LOWER(mail_id) = LOWER(${body.mail_id})
+      LIMIT 1
+    `;
     if (!user) {
       const response = {
         success: true,
@@ -48,7 +53,9 @@ LoginRoutes.post("/login/user", async (req, res) => {
     }
 
     console.log(user);
-    const validPassword = await user.comparePassword(body.password);
+    const validPassword = user.password_hash
+      ? await bcrypt.compare(body.password, user.password_hash)
+      : false;
     if (!validPassword) {
       const response = {
         success: true,

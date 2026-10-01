@@ -1,8 +1,7 @@
-const fs = require("fs");
-const path = require("path");
-const songsDetails = require("./models/songs");
+const { sql } = require("./db");
+const resolveSongFile = require("./library/resolve-song-file");
 
-const musicDirectory = path.join(__dirname, "musicFiles");
+const musicDirectory = require("path").join(__dirname, "musicFiles");
 
 module.exports = (server) => {
   const io = require("socket.io")(server, {
@@ -37,7 +36,7 @@ module.exports = (server) => {
     socket.join(roomId);
     const state = roomPlayback.get(roomId);
     if (!state) return;
-    socket.emit("metaData", state.record);
+    socket.emit("metaData", { ...state.record, roomId });
     emitPlaybackState(socket, roomId, state);
   };
 
@@ -57,9 +56,10 @@ module.exports = (server) => {
       if (roomId) joinRoom(socket, roomId);
     });
 
-    socket.on("leave room", (value) => {
+    socket.on("leave room", async (value, acknowledge) => {
       const roomId = getRoomId(value);
-      if (roomId) socket.leave(roomId);
+      if (roomId) await socket.leave(roomId);
+      if (typeof acknowledge === "function") acknowledge({ left: Boolean(roomId) });
     });
 
     socket.on("play", async (event) => {
@@ -70,29 +70,26 @@ module.exports = (server) => {
       }
 
       try {
-        const record = await songsDetails.findOne({ _id: event.songId });
+        const [record] = await sql`
+          SELECT id AS "_id", s_path, s_pic_path, i_tag, duration,
+                 video_id AS "videoId", display_name AS "s_displayName",
+                 image_url, artist, language
+          FROM songs WHERE id = ${event.songId}
+          LIMIT 1
+        `;
         if (!record?.s_path) throw new Error("Song file is unavailable.");
 
-        const audioPath = path.resolve(musicDirectory, record.s_path);
-        const relativePath = path.relative(musicDirectory, audioPath);
-        if (
-          relativePath === ".." ||
-          relativePath.startsWith(`..${path.sep}`) ||
-          path.isAbsolute(relativePath)
-        ) {
-          throw new Error("Invalid song file path.");
-        }
-        await fs.promises.stat(audioPath);
+        await resolveSongFile(musicDirectory, record.s_path);
 
         const state = {
-          record: typeof record.toObject === "function" ? record.toObject() : record,
+          record,
           songId: String(record._id),
           position: 0,
           startedAt: Date.now(),
           paused: false,
         };
         roomPlayback.set(roomId, state);
-        io.to(roomId).emit("metaData", state.record);
+        io.to(roomId).emit("metaData", { ...state.record, roomId });
         emitPlaybackState(io.to(roomId), roomId, state);
       } catch (error) {
         io.to(roomId).emit("playback:error", { message: "Unable to play this song." });
